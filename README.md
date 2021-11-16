@@ -30,12 +30,11 @@ We use itksnap for visualization. You can easily install itksnap with.
 
     sudo apt install itksnap
 
-
-If you prefer, you can run the install.sh script, with sudo privileges (needed for installing itksnap).
+Alternatively, you can run the install.sh script.
     
     sh install.sh
 
-In the near future, we will make available a standalone executable for ease of use.
+In the near future, we will make a standalone pre-compiled executable release available, for ease of use.
 
 ## Running 
 
