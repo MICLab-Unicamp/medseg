@@ -49,7 +49,7 @@ And run, no arguments are necessary since there will be a graphical user interfa
 ## How to train?
 
 This code is only intended to allow reproduction of the segmentation capabilities of our work. 
-However, we provide the complete Lightning Module code (in lightning_module.py) that can used under your workflow and data for training if you use PyTorch Lightning (https://www.pytorchlightning.ai/).
+However, we provide the complete Lightning Module code (in lightning_module.py) which can be used under your workflow and data for training if you use PyTorch Lightning.
 
 ## Issues?
 
