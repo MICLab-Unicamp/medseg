@@ -7,18 +7,18 @@ The publication for this method, Multitasking segmentation of lung and COVID-19 
 This was only tested on Ubuntu 20.04.
 Python libraries required to run are the following: 
 
-numpy
-pillow
-scipy
-tqdm
-torch
-torchvision
-pytorch-lightning==1.3.8
-efficientnet_pytorch
-connected-components-3d
-psutil
-gputil
-SimpleITK==2.0.2
+numpy\
+pillow\
+scipy\
+tqdm\
+torch\
+torchvision\
+pytorch-lightning==1.3.8\
+efficientnet_pytorch\
+connected-components-3d\
+psutil\
+gputil\
+SimpleITK==2.0.2\
 
 They are contained on the requirements.txt file and can be installed with a working pip. We recommend using a Miniconda environment (https://docs.conda.io/en/latest/miniconda.html).
 
