@@ -83,7 +83,8 @@ class MainWindow(threading.Thread):
                                                           self.args.batch_size, 
                                                           self.args.output_folder,
                                                           bool(self.display.get()),
-                                                          self.info_q))
+                                                          self.info_q,
+                                                          self.args.cpu))
         self.pipeline_comms_thread = threading.Thread(target=self.pipeline_comms)                                                                
         self.pipeline_comms_thread.start()
         self.pipeline.start()

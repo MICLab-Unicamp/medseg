@@ -13,11 +13,14 @@ import SimpleITK as sitk
 from utils import monitor_itksnap, multi_channel_zoom
 
 
-def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q):
+def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool):
     assert len(runlist) > 0, "No file found on given input path."
     assert os.path.isfile(model_path), f"Couldn't find a model in {model_path}."
     
-    gpu_available = torch.cuda.is_available()
+    if cpu:
+        gpu_available = False
+    else:
+        gpu_available = torch.cuda.is_available()
     
     model = CoEDetModule.load_from_checkpoint(model_path).eval()
     if gpu_available:
