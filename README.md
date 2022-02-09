@@ -20,16 +20,40 @@ https://www.youtube.com/watch?v=PlhNUD0Y4hg
   organization={SPIE}\
 }
 
-## Requirements and Installation
+## Requirement: ITKSnap
 
-This was only tested on Ubuntu 20.04.
-Python libraries required to run are the following: 
+We use itksnap for visualization. 
+
+### Linux/Ubuntu
+
+You can easily install itksnap in Ubuntu with.
+
+    sudo apt install itksnap
+
+### Windows
+
+For windows, install using the self-install package in: http://www.itksnap.org/pmwiki/pmwiki.php?n=Downloads.SNAP3. In this case we assume the itksnap executable will be in "C:\\Program Files\\ITK-SNAP 3.8\\bin\\ITK-SNAP.exe". If this is different for you, change the "windows_itksnap_path" variable in the config.json file.
+
+## Pre-built binaries
+
+We will make those available soon.
+
+## Requirements and running from source code
+
+This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool directly from code.
+
+We recommend using a Miniconda environment. To install Miniconda for Windows or Linux follow the instructions in: https://docs.conda.io/en/latest/miniconda.html
+
+If you are on windows. All following commands should be executed in Anaconda Prompt (installed with miniconda).
+
+Now, install torch with CUDA GPU support following the instructions for your OS on http://www.pytorch.org/. You can also install without cuda support if you dont have a GPU.
+
+All additional required libraries are contained on the requirements.txt file and can be installed with pip. They are:
 
 numpy\
 pillow\
 scipy\
 tqdm\
-torch\
 torchvision\
 pytorch-lightning==1.3.8\
 efficientnet_pytorch\
@@ -38,31 +62,19 @@ psutil\
 gputil\
 SimpleITK==2.0.2\
 
-They are contained on the requirements.txt file and can be installed with a working pip. We recommend using a Miniconda environment (https://docs.conda.io/en/latest/miniconda.html).
+The command for installing these libraries is: 
 
     pip install -r requirements.txt
 
-We recommend that you install torch with CUDA GPU support (follow the instructions on http://www.pytorch.org/), unless you plan to run in a CPU (also possible).
-
-We use itksnap for visualization. You can easily install itksnap with.
-
-    sudo apt install itksnap
-
-Alternatively, you can run the install.sh script.
-    
-    sh install.sh
-
-In the near future, we will make a standalone pre-compiled executable release available, for ease of use.
-
 ## Running 
 
-To run, just run the run.sh script. Make it executable first:
+To run from code, just run the run.py file with your miniconda python. 
 
-     chmod +x run.sh
-    
-And run, no arguments are necessary since there will be a graphical user interface.
+    python run.py
 
-    ./run.sh
+If you don't want to use a GPU, run with the --cpu flag.
+
+    python run.py --cpu
 
 ## How to train?
 
@@ -70,5 +82,8 @@ This code is only intended to allow reproduction of the segmentation capabilitie
 However, we provide the complete Lightning Module code (in lightning_module.py) which can be used under your workflow and data for training if you use PyTorch Lightning.
 
 ## Issues?
+
+If you have any problems, make sure your pip is the same from your miniconda installation,
+by checking if pip --version points to the miniconda directory. Also check if the python you are using is the miniconda one.
 
 If you have any issues, feel free to create an issue on this repository.

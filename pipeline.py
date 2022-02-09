@@ -2,6 +2,7 @@
 Main processing pipeline.
 '''
 import os
+import json
 import numpy as np
 import subprocess
 import torch
@@ -122,10 +123,18 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         if display:
             info_q.put(("write", "Displaying results with itksnap.\nClose itksnap windows to continue."))
             try:
-                subprocess.run(["itksnap", "-g", output_input_path, "-s", output_merged_path])
+                with open("config.json", 'r') as config_file:
+                    config = json.load(config_file)
+                if os.name == "nt":
+                    itk_path = config["windows_itksnap_path"]
+                    subprocess.run([itk_path, "-g", output_input_path, "-s", output_merged_path])
+                else:
+                    itk_path = config["linux_itksnap_path"]
+                    subprocess.run([itk_path, "-g", output_input_path, "-s", output_merged_path])
                 monitor_itksnap()
-            except Exception:
+            except Exception as e:
                 info_q.put(("write", "Error displaying results. Do you have itksnap installed?"))
+                print(e)
         info_q.put(("generalbar", (100*i+100)/runlist_len))
         info_q.put(("write", f"{i+1} volumes processed out of {runlist_len}.\nResult are on the {output_path} folder."))
     info_q.put(None)
