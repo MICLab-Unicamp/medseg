@@ -20,65 +20,53 @@ https://www.youtube.com/watch?v=PlhNUD0Y4hg
   organization={SPIE}\
 }
 
-## Requirement: ITKSnap
+## Requirements
+
+This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool installing it with Miniconda and pip.
+
+### ITKSnap
 
 We use itksnap for visualization. 
-
-### Linux/Ubuntu
 
 You can easily install itksnap in Ubuntu with.
 
     sudo apt install itksnap
 
-### Windows
-
-For windows, install using the self-install package in: http://www.itksnap.org/pmwiki/pmwiki.php?n=Downloads.SNAP3. In this case we assume the itksnap executable will be in "C:\\Program Files\\ITK-SNAP 3.8\\bin\\ITK-SNAP.exe". If this is different for you, change the "windows_itksnap_path" variable in the config.json file.
-
-## Pre-built binaries
-
-We will make those available soon.
-
-## Environment and Libraries
-
-This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool directly from code.
+For windows, install using the self-install package in: http://www.itksnap.org/pmwiki/pmwiki.php?n=Downloads.SNAP3. In this case we assume the itksnap executable will be in "C:\\Program Files\\ITK-SNAP 3.8\\bin\\ITK-SNAP.exe". If this is different for you, change the "win_itk_path" argument when running.
 
 ### Miniconda
 
-We recommend using a Miniconda environment. To install Miniconda for Windows or Linux follow the instructions in: https://docs.conda.io/en/latest/miniconda.html. If you are on windows. All following commands should be executed in Anaconda Prompt (installed with miniconda).
+We recommend using a Miniconda environment for installation. To install Miniconda for Windows or Linux follow the instructions in: https://docs.conda.io/en/latest/miniconda.html. If you are on windows. All following commands should be executed in Anaconda Prompt (bundled with miniconda).
 
-### PyTorch
+### GPU Usage: PyTorch
 
-Now, install torch with CUDA GPU support following the instructions for your OS on http://www.pytorch.org/. You can also install without cuda support if you dont have a GPU.
+Now, install torch with CUDA GPU support. It can be easily installed with a single command depending on your environment. 
+Follow the instructions for your OS on http://www.pytorch.org/. 
 
-### Additional dependencies
+If you don't want to use a GPU, you can skip this part and trust the automatic installation of dependencies.
 
-All additional required libraries are contained on the requirements.txt file and can be installed with pip. They are:
+## Installation
 
-numpy\
-pillow\
-scipy\
-tqdm\
-torchvision\
-pytorch-lightning==1.3.8\
-efficientnet_pytorch\
-connected-components-3d\
-psutil\
-gputil\
-SimpleITK==2.0.2\
+All additional required libraries are contained on the requirements.txt file.
+The whole tool can be installed with the following steps:
 
-The command for installing these libraries is: 
-
-    pip install -r requirements.txt
+    git clone https://github.com/MICLab-Unicamp/coedet
+    cd coedet
+    pip install .
 
 ## Running 
 
-To run from code, just run the run.py file with your miniconda python. 
+To run, just call coedet_gui in a terminal.
 
-    python run.py
+    coedet_gui
 
 If you don't want to use a GPU, run with the --cpu flag.
 
-    python run.py --cpu
+    coedet_gui --cpu
+
+If your ITKSNap installation is not on the assumed default locations, you can change where the tool will look for it. Check the --help command for more details.
+
+    coedet_gui --help
 
 ## How to train?
 
@@ -88,6 +76,6 @@ However, we provide the complete Lightning Module code (in lightning_module.py) 
 ## Issues?
 
 If you have any problems, make sure your pip is the same from your miniconda installation,
-by checking if pip --version points to the miniconda directory. Also check if the python you are using is the miniconda one.
+by checking if pip --version points to the miniconda directory.
 
 If you have any issues, feel free to create an issue on this repository.
