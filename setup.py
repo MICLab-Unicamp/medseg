@@ -1,9 +1,7 @@
-import os
-from importlib_metadata import entry_points
 import setuptools
 from coedet import __version__
 
-with open(os.path.join("coedet", "README.md"), "r") as fh:
+with open("README.md", "r") as fh:
     long_description = fh.read()
 
 found = setuptools.find_packages()
