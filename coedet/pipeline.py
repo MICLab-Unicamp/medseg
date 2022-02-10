@@ -18,7 +18,11 @@ from coedet.image_read import SliceDataset
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
              windows_itksnap_path: str, linux_itksnap_path: str):
-    model_path = os.path.join(site.getsitepackages()[0], "coedet", model_path)
+    if os.name == "nt":
+        model_path = os.path.join(site.getsitepackages()[1], "coedet", model_path)
+    else:
+        model_path = os.path.join(site.getsitepackages()[0], "coedet", model_path)
+    
     assert len(runlist) > 0, "No file found on given input path."
     assert os.path.isfile(model_path), f"Couldn't find a model in {model_path}."
     

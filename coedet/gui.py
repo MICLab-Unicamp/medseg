@@ -17,8 +17,10 @@ from torchvision.transforms import Resize
 from coedet.pipeline import pipeline
 from coedet.monitoring import get_stats
 
-
-ICON_PNG = os.path.join(site.getsitepackages()[0], "coedet", "icon.png")
+if os.name == "nt":
+    ICON_PNG = os.path.join(site.getsitepackages()[1], "coedet", "icon.png")
+else:
+    ICON_PNG = os.path.join(site.getsitepackages()[0], "coedet", "icon.png")
 DEFAULT_TITLE = "CoEDet: Multitasking Lung and findings segmentation on chest CT of COVID patients"
 
 
