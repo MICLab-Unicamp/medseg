@@ -1,0 +1,13 @@
+numpy
+rich
+pillow
+scipy
+tqdm
+torch
+torchvision
+pytorch-lightning
+efficientnet_pytorch
+connected-components-3d
+psutil
+gputil
+SimpleITK==2.0.2
