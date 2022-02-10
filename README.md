@@ -47,12 +47,13 @@ If you don't want to use a GPU, you can skip this part and trust the automatic i
 
 ## Installation
 
-All additional required libraries are contained on the requirements.txt file.
-The whole tool can be installed with the following steps:
+All additional required libraries and the tool itself will be installed with the following steps:
 
     git clone https://github.com/MICLab-Unicamp/coedet
     cd coedet
     pip install .
+    
+If you use virtual environments, it is safer to install in a new virtual environment to avoid conflicts.
 
 ## Running 
 
