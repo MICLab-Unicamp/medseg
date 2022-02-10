@@ -38,15 +38,19 @@ For windows, install using the self-install package in: http://www.itksnap.org/p
 
 We will make those available soon.
 
-## Requirements and running from source code
+## Environment and Libraries
 
 This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool directly from code.
 
-We recommend using a Miniconda environment. To install Miniconda for Windows or Linux follow the instructions in: https://docs.conda.io/en/latest/miniconda.html
+### Miniconda
 
-If you are on windows. All following commands should be executed in Anaconda Prompt (installed with miniconda).
+We recommend using a Miniconda environment. To install Miniconda for Windows or Linux follow the instructions in: https://docs.conda.io/en/latest/miniconda.html. If you are on windows. All following commands should be executed in Anaconda Prompt (installed with miniconda).
+
+### PyTorch
 
 Now, install torch with CUDA GPU support following the instructions for your OS on http://www.pytorch.org/. You can also install without cuda support if you dont have a GPU.
+
+### Additional dependencies
 
 All additional required libraries are contained on the requirements.txt file and can be installed with pip. They are:
 
