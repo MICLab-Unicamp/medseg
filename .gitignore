@@ -1,5 +1,6 @@
 # Custom
 *.nii.gz
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

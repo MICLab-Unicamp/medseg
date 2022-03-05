@@ -84,7 +84,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         lung, covid = post_processing(cpu_output)
         info_q.put(("iterbar", 90))
 
-        lung_ocupation = round((covid.sum()/lung.sum())*100)
+        lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
         output_csv["ID"].append(os.path.basename(run).split(".nii")[0])
         output_csv["Occupation"].append(f"{lung_ocupation} %")
 
@@ -152,4 +152,5 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
 
     output_csv_path = os.path.join(output_path, f"coedet_run_statistics_{uid}.csv")
     pandas.DataFrame.from_dict(output_csv).to_csv(output_csv_path)
+    info_q.put(("write", f"Sheet with pulmonary involvement statistics saved in {output_csv_path}."))
     info_q.put(None)
