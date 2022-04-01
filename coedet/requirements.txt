@@ -4,6 +4,7 @@ pillow
 scipy
 tqdm
 torch
+pandas
 torchvision
 pytorch-lightning
 efficientnet_pytorch
