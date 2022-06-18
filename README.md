@@ -1,7 +1,7 @@
-# Covid EfficientDet (COEdet)
-Official repository for reproducing COVID segmentation prediction using our CoEDet model.
+# Modified EfficientDet Segmentation (MEDSeg)
+Official repository for reproducing COVID segmentation prediction using our MEDSeg model.
 
-The publication for this method, **Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models**, has been published at the 17th International Symposium on Medical Information Processing and Analysis (SIPAIM 2021).
+The publication for this method, **Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models**, has been published at the 17th International Symposium on Medical Information Processing and Analysis (SIPAIM 2021), and won the "SIPAIM Society Award".
 http://dx.doi.org/10.1117/12.2606118
 
 The presentation can be watched in YouTube:
