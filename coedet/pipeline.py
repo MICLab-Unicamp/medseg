@@ -2,13 +2,15 @@
 Main processing pipeline.
 '''
 import os
-import json
+import datetime
 import numpy as np
 import subprocess
 import torch
 import site
+import pandas
 from typing import List
 import SimpleITK as sitk
+from collections import defaultdict
 
 # V1
 from coedet.utils import monitor_itksnap, multi_channel_zoom
@@ -52,6 +54,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
 
     info_q.put(("write", "Succesfully initialized network"))
     runlist_len = len(runlist)
+    output_csv = defaultdict(list)
     for i, run in enumerate(runlist):
         info_q.put(("write", f"Loading and Pre-processing {run}..."))
         slice_dataset = SliceDataset(run)
@@ -100,6 +103,10 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             
             lung, covid = post_processing(cpu_output)
             info_q.put(("iterbar", 90))
+
+        lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
+        output_csv["ID"].append(os.path.basename(run).split(".nii")[0])
+        output_csv["Occupation"].append(f"{lung_ocupation} %")
 
         # Undo flips
         if len(dir_array) == 9:
@@ -161,4 +168,9 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
                 print(e)
         info_q.put(("generalbar", (100*i+100)/runlist_len))
         info_q.put(("write", f"{i+1} volumes processed out of {runlist_len}.\nResult are on the {output_path} folder."))
+    uid = str(datetime.datetime.today()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '')
+
+    output_csv_path = os.path.join(output_path, f"coedet_run_statistics_{uid}.csv")
+    pandas.DataFrame.from_dict(output_csv).to_csv(output_csv_path)
+    info_q.put(("write", f"Sheet with pulmonary involvement statistics saved in {output_csv_path}."))
     info_q.put(None)

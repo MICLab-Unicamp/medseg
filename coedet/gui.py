@@ -5,7 +5,6 @@ import time
 import glob
 import numpy as np
 import tkinter as tk
-import multiprocessing as mp
 from tkinter import HORIZONTAL, VERTICAL, Tk, Text, PhotoImage, Canvas, NW
 from tkinter.ttk import Progressbar, Button, Label, Style, Scrollbar
 from tkinter.filedialog import askopenfilename, askdirectory
@@ -92,16 +91,16 @@ class MainWindow(threading.Thread):
         else:
             output_folder = self.args.output_folder
 
-        # Entirely separate process for heavy processing (multithreading)
-        self.pipeline = mp.Process(target=pipeline, args=(self.args.model_path, 
-                                                          self.runlist, 
-                                                          self.args.batch_size, 
-                                                          output_folder,
-                                                          bool(self.display.get()),
-                                                          self.info_q,
-                                                          self.args.cpu,
-                                                          self.args.win_itk_path,
-                                                          self.args.linux_itk_path))
+        # Separate thread for heavy processing
+        self.pipeline = threading.Thread(target=pipeline, args=(self.args.model_path, 
+                                                                self.runlist, 
+                                                                self.args.batch_size, 
+                                                                output_folder,
+                                                                bool(self.display.get()),
+                                                                self.info_q,
+                                                                self.args.cpu,
+                                                                self.args.win_itk_path,
+                                                                self.args.linux_itk_path))
         self.pipeline_comms_thread = threading.Thread(target=self.pipeline_comms)                                                                
         self.pipeline_comms_thread.start()
         self.pipeline.start()

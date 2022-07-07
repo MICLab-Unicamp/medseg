@@ -32,13 +32,13 @@ class SliceDataset(Dataset):
         print(f"Spacing: {self.spacing}")
 
         if len(dir_array) == 9:
-            data = np.flip(data, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()  # fix axial orientation for bed on the bottom
+            data = np.flip(data, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()  # fix axial orientation for bed on the bottom, from lungmask
 
         # Pre processing
         data = np.clip(data, -1024, 600)
         data = (data - data.min()) / (data.max() - data.min())
 
-        data = torch.from_numpy(data)
+        data = torch.from_numpy(data).float()
         data = data.unsqueeze(1)  # [Fatia, H, W] -> [Fatia, 1, H, W]
         
         self.data = data
