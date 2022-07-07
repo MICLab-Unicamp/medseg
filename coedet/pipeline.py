@@ -10,10 +10,14 @@ import site
 from typing import List
 import SimpleITK as sitk
 
+# V1
 from coedet.utils import monitor_itksnap, multi_channel_zoom
 from coedet.postprocess import post_processing
 from coedet.lightning_module import CoEDetModule
 from coedet.image_read import SliceDataset
+
+# V2
+from seg_pipeline import SegmentationPipeline
 
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
@@ -23,6 +27,11 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
     else:
         model_path = os.path.join(site.getsitepackages()[0], "coedet", model_path)
     
+    if os.path.isdir(model_path):
+        new_pipeline = True
+    else:
+        new_pipeline = False
+    
     assert len(runlist) > 0, "No file found on given input path."
     assert os.path.isfile(model_path), f"Couldn't find a model in {model_path}."
     
@@ -30,8 +39,14 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         gpu_available = False
     else:
         gpu_available = torch.cuda.is_available()
-    
-    model = CoEDetModule.load_from_checkpoint(model_path).eval()
+    if new_pipeline:
+        model = SegmentationPipeline(best_3d=os.path.join(model_path, "poly_lung.ckpt"),
+                                     best_25d=os.path.join(model_path, "sme2d_coedet_fiso.ckpt"),
+                                     best_25d_raw=os.path.join(model_path, "raw_medseg_positive.ckpt"),
+                                     batch_size=batch_size)
+    else:
+        model = CoEDetModule.load_from_checkpoint(model_path).eval()
+
     if gpu_available:
         model = model.cuda()
 
@@ -47,39 +62,44 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         origin = slice_dataset.origin
         original_image = slice_dataset.read_image()
 
-        slice_dataloader = slice_dataset.get_dataloader(batch_size)
-        info_q.put(("iterbar", 20))
-        info_q.put(("write", "Predicting..."))
-        output = []
-        for s, batch in enumerate(slice_dataloader):
-            info_q.put(("iterbar", 20 + s*(60/len(slice_dataset))))
-            package = batch[0].squeeze().numpy().copy()
-            info_q.put(("slice", package))
+        if new_pipeline:
+            # Use seg_pipeline here
+            raise NotImplementedError
+        else:
+            slice_dataloader = slice_dataset.get_dataloader(batch_size)
+            info_q.put(("iterbar", 20))
+            info_q.put(("write", "Predicting..."))
+            output = []
+            for s, batch in enumerate(slice_dataloader):
+                info_q.put(("iterbar", 20 + s*(60/len(slice_dataset))))
+                package = batch[0].squeeze().numpy().copy()
+                info_q.put(("slice", package))
 
-            if gpu_available:
-                batch = batch.cuda()
+                if gpu_available:
+                    batch = batch.cuda()
 
-            with torch.no_grad():
-                output.append(model(batch).detach().cpu())
-        info_q.put(("icon", ''))
+                with torch.no_grad():
+                    output.append(model(batch).detach().cpu())
+            info_q.put(("icon", ''))
+                
+            info_q.put(("write", "Post-processing..."))
+            cpu_output = torch.stack(output, dim=0)
+            N, B, C, H, W = cpu_output.shape
+            cpu_output = cpu_output.reshape(N*B, C, H, W).permute(1, 0, 2, 3).numpy()
+        
+            original_shape = slice_dataset.original_shape
             
-        info_q.put(("write", "Post-processing..."))
-        cpu_output = torch.stack(output, dim=0)
-        N, B, C, H, W = cpu_output.shape
-        cpu_output = cpu_output.reshape(N*B, C, H, W).permute(1, 0, 2, 3).numpy()
-        
-        original_shape = slice_dataset.original_shape
-        
-        output_shape = cpu_output[0].shape
-        print(f"Original shape: {original_shape}")
-        print(f"Network output shape: {output_shape}")
-        if original_shape != output_shape:
-            print("Need interpolation to original shape.")
-            zoom_factor = np.array(original_shape)/np.array(output_shape)
-            cpu_output = multi_channel_zoom(cpu_output, zoom_factor, order=3, threaded=False, tqdm_on=False)
-        info_q.put(("iterbar", 85))
-        lung, covid = post_processing(cpu_output)
-        info_q.put(("iterbar", 90))
+            output_shape = cpu_output[0].shape
+            print(f"Original shape: {original_shape}")
+            print(f"Network output shape: {output_shape}")
+            if original_shape != output_shape:
+                print("Need interpolation to original shape.")
+                zoom_factor = np.array(original_shape)/np.array(output_shape)
+                cpu_output = multi_channel_zoom(cpu_output, zoom_factor, order=3, threaded=False, tqdm_on=False)
+            info_q.put(("iterbar", 85))
+            
+            lung, covid = post_processing(cpu_output)
+            info_q.put(("iterbar", 90))
 
         # Undo flips
         if len(dir_array) == 9:
