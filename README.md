@@ -57,17 +57,17 @@ If you use virtual environments, it is safer to install in a new virtual environ
 
 ## Running 
 
-To run, just call coedet_gui in a terminal.
+To run, just call coedet in a terminal.
 
-    coedet_gui
+    coedet
 
 If you don't want to use a GPU, run with the --cpu flag.
 
-    coedet_gui --cpu
+    coedet_cpu
 
 If your ITKSNap installation is not on the assumed default locations, you can change where the tool will look for it. Check the --help command for more details.
 
-    coedet_gui --help
+    coedet --help
 
 ## How to train?
 
