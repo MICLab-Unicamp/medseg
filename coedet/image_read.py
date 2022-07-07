@@ -9,6 +9,28 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import Resize, InterpolationMode
 
 
+def read_preprocess(input_path):
+    image = sitk.ReadImage(input_path)
+    data = sitk.GetArrayFromImage(image)
+    original_shape = data.shape
+    
+    directions = image.GetDirection()
+    dir_array = np.asarray(directions)
+    origin = image.GetOrigin()
+    spacing = image.GetSpacing()
+
+    if len(dir_array) == 9:
+        data = np.flip(data, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()  # fix axial orientation for bed on the bottom, from lungmask
+
+    # Pre processing
+    data = np.clip(data, -1024, 600)
+    data = (data - data.min()) / (data.max() - data.min())
+
+    data = torch.from_numpy(data).float()
+
+    return data, original_shape, origin, spacing, directions, image
+
+
 class SliceDataset(Dataset):
     def __init__(self, input_path):
         '''
@@ -18,27 +40,12 @@ class SliceDataset(Dataset):
         '''
         super().__init__()
         self.input_path = input_path
-        image = self.read_image()
-        data = sitk.GetArrayFromImage(image)
-        self.original_shape = data.shape
         
-        self.directions = image.GetDirection()
-        dir_array = np.asarray(self.directions)
-        self.origin = image.GetOrigin()
-        self.spacing = image.GetSpacing()
-
+        data, self.original_shape, self.origin, self.spacing, self.directions = read_preprocess(self.input_path)
+        
         print(f"Directions: {self.directions}")
         print(f"Origin: {self.origin}")
         print(f"Spacing: {self.spacing}")
-
-        if len(dir_array) == 9:
-            data = np.flip(data, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()  # fix axial orientation for bed on the bottom, from lungmask
-
-        # Pre processing
-        data = np.clip(data, -1024, 600)
-        data = (data - data.min()) / (data.max() - data.min())
-
-        data = torch.from_numpy(data).float()
         data = data.unsqueeze(1)  # [Fatia, H, W] -> [Fatia, 1, H, W]
         
         self.data = data

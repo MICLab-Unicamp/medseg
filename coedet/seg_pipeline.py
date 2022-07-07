@@ -8,14 +8,24 @@ import torch
 import numpy as np
 import subprocess
 from DLPT.post.labeling3d import get_connected_components
-from seg_2d_module import Seg2DModule
-from poly_seg_3d_module import PolySeg3DModule
-from eval_2d_utils import stack_predict, multi_view_consensus
+from coedet.seg_2d_module import Seg2DModule
+from coedet.poly_seg_3d_module import PolySeg3DModule
+from coedet.eval_2d_utils import stack_predict, multi_view_consensus
 import SimpleITK as sitk
 from torch.nn import functional as F
-from typing import Dict
-from collections import defaultdict
 from DLPT.models.unet_v2 import UNetEncoder
+from tqdm import tqdm
+
+
+class PrintInterface():
+    def __init__(self, tqdm_iter):
+        self.tqdm_iter = tqdm_iter
+
+    def write(self, x):
+        self.tqdm_iter.put(("write", x))
+
+    def progress(self, x):
+        self.tqdm_iter.put(("iterbar", x))
 
 
 class SegmentationPipeline():
@@ -24,10 +34,12 @@ class SegmentationPipeline():
                  best_25d="/home/diedre/diedre_phd/phd/models/wd_step_sme2d_coedet_fiso-epoch=72-val_loss=0.06-bg_dice=1.00-healthy_dice=0.92-unhealthy_dice=0.74.ckpt",  # SME2D COEDET FISO Full train wd step  better
                  best_25d_raw="/home/diedre/diedre_phd/phd/models/wd_step_raw_medseg_positive-epoch=27-val_loss=0.15-bg_dice=1.00-healthy_dice=0.84-unhealthy_dice=0.71.ckpt",  # Best raw axial 2.5D model, trained on positive 256 slices only
                  batch_size=4,
-                 n=10):  
+                 n=10,
+                 cpu=False):  
         self.version = 'v1.1_wd_step'
         self.batch_size = batch_size
         self.n = n
+        self.device = torch.device("cpu") if cpu else torch.device("cuda:0")
         self.model_3d = PolySeg3DModule.load_from_checkpoint(best_3d).eval()
         self.model_25d = Seg2DModule.load_from_checkpoint(best_25d).eval()
         self.model_25d_raw = Seg2DModule.load_from_checkpoint(best_25d_raw).eval()
@@ -38,12 +50,17 @@ class SegmentationPipeline():
 
     def __call__(self, input_volume, spacing, tqdm_iter=None, minimum_return=False):
         assert input_volume.max() <= 1.0 and input_volume.min() >= 0.0
+        
+        if tqdm_iter is not None and not isinstance(tqdm_iter, tqdm):
+            tqdm_iter = PrintInterface(tqdm_iter)
+
         with torch.no_grad():
             # 3D
             if tqdm_iter is not None:
                 tqdm_iter.write("3D Prediction...")
-            self.model_3d = self.model_3d.cuda()
-            input_volume = input_volume.cuda()
+                tqdm_iter.progress(20)
+            self.model_3d = self.model_3d.to(self.device)
+            input_volume = input_volume.to(self.device)
             pre_shape = input_volume.shape[2:]
             transformed_input = F.interpolate(input_volume, (128, 256, 256), mode="trilinear")
             output = self.model_3d(transformed_input, get_bg=True)[0]
@@ -52,27 +69,36 @@ class SegmentationPipeline():
             output = F.interpolate(output, pre_shape, mode="nearest").squeeze().cpu().numpy()
             if self.n is not None:
                 print("Computing attention")
+                if tqdm_iter is not None:
+                    tqdm_iter.write("Computing attention...")
                 atts = get_atts_work(self.model_3d.model.enc, pre_shape)
             else:
                 print("Skipping attention computation")
+                if tqdm_iter is not None:
+                    tqdm_iter.write("Skipping attention computation")
                 atts = None
-            
+            tqdm_iter.progress(30)
+                
             # 2.5D RAW
             if tqdm_iter is not None:
                 tqdm_iter.write("2.5D Raw prediction...")
+                tqdm_iter.progress(40)
             if self.n is None:
-                output_f = stack_predict(self.model_25d_raw.cuda(), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n)[0]
+                output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device)[0]
             else:
-                output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.cuda(), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n)
+                output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device)
             self.model_25d_raw.cpu()
             input_volume = input_volume.cpu()
 
             # Isometric single model 2.5D consensus
             if tqdm_iter is not None:
                 tqdm_iter.write("2.5D Single model isometric consensus prediction...")
-            spacing = np.array([x.item() for x in spacing])
+                tqdm_iter.progress(60)
+
+            if not isinstance(spacing, np.ndarray):
+                spacing = np.array([x.item() for x in spacing])
             dest_shape = (spacing*pre_shape).astype(int).tolist()
-            input_volume.cuda()
+            input_volume.to(self.device)
             input_iso = F.interpolate(input_volume, size=dest_shape, mode="trilinear", align_corners=False).cpu()
             input_volume.cpu()
             orientations = [input_iso, 
@@ -84,12 +110,13 @@ class SegmentationPipeline():
                                                  tqdm_iter=None,
                                                  batch_size=self.batch_size,
                                                  extended_2d=1,
-                                                 device=torch.device("cuda:0"))
+                                                 device=self.device)
 
-            output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).cuda(), pre_shape, mode="nearest").squeeze().cpu().numpy()
+            output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
        
         if tqdm_iter is not None:
-                tqdm_iter.write("Post-processing...")
+            tqdm_iter.write("Post-processing...")
+            tqdm_iter.progress(80)
         output_logits = {"3d_bg": output[0],
                          "3d_left_lung": output[1],
                          "3d_right_lung": output[2],

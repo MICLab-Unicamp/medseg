@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from multiprocessing import cpu_count
 from tqdm import tqdm
-from uncertainty import get_epistemic_uncertainty
+from coedet.uncertainty import get_epistemic_uncertainty
 
 
 class E2DStackDataset():

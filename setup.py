@@ -25,8 +25,8 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=['setuptools', 'numpy', 'rich', 'pillow', 'scipy', 'tqdm', 'torch', 'torchvision', 'pytorch-lightning', 'efficientnet_pytorch', 'connected-components-3d', 'psutil', 'gputil', 'SimpleITK==2.0.2'],
     entry_points={
-        'console_scripts': ["coedet_gui = coedet.run:main"]
+        'console_scripts': ["coedet = coedet.run:main", "coedet_cpu = coedet.run:main_cpu"]
     },
     include_package_data=True,
-    package_data={'coedet': ["best_coedet.ckpt", "icon.png"]}
+    package_data={'coedet': ["best_coedet.ckpt", "icon.png", "poly_lung.ckpt", "raw_medseg_positive.ckpt", "sme2d_coedet_fiso.ckpt"]}
 )

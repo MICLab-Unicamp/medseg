@@ -16,59 +16,62 @@ from collections import defaultdict
 from coedet.utils import monitor_itksnap, multi_channel_zoom
 from coedet.postprocess import post_processing
 from coedet.lightning_module import CoEDetModule
-from coedet.image_read import SliceDataset
+from coedet.image_read import SliceDataset, read_preprocess
 
 # V2
-from seg_pipeline import SegmentationPipeline
+from coedet.seg_pipeline import SegmentationPipeline
 
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
              windows_itksnap_path: str, linux_itksnap_path: str):
-    if os.name == "nt":
-        model_path = os.path.join(site.getsitepackages()[1], "coedet", model_path)
-    else:
-        model_path = os.path.join(site.getsitepackages()[0], "coedet", model_path)
-    
-    if os.path.isdir(model_path):
+
+    pkg_path = os.path.join(site.getsitepackages()[int((os.name=="nt")*1)], "coedet")
+    if model_path == "best_models":
         new_pipeline = True
     else:
         new_pipeline = False
     
     assert len(runlist) > 0, "No file found on given input path."
-    assert os.path.isfile(model_path), f"Couldn't find a model in {model_path}."
     
     if cpu:
         gpu_available = False
     else:
         gpu_available = torch.cuda.is_available()
     if new_pipeline:
-        model = SegmentationPipeline(best_3d=os.path.join(model_path, "poly_lung.ckpt"),
-                                     best_25d=os.path.join(model_path, "sme2d_coedet_fiso.ckpt"),
-                                     best_25d_raw=os.path.join(model_path, "raw_medseg_positive.ckpt"),
-                                     batch_size=batch_size)
+        model = SegmentationPipeline(best_3d=os.path.join(pkg_path, "poly_lung.ckpt"),
+                                     best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt"),
+                                     best_25d_raw=os.path.join(pkg_path, "raw_medseg_positive.ckpt"),
+                                     batch_size=batch_size,
+                                     cpu=cpu,
+                                     n=None)  # uncertainty disabled for now
     else:
-        model = CoEDetModule.load_from_checkpoint(model_path).eval()
+        model = CoEDetModule.load_from_checkpoint(os.path.join(pkg_path, "best_coedet.ckpt")).eval()
 
-    if gpu_available:
-        model = model.cuda()
+        if gpu_available:
+            model = model.cuda()
 
     info_q.put(("write", "Succesfully initialized network"))
     runlist_len = len(runlist)
     output_csv = defaultdict(list)
     for i, run in enumerate(runlist):
         info_q.put(("write", f"Loading and Pre-processing {run}..."))
-        slice_dataset = SliceDataset(run)
-    
-        directions = slice_dataset.directions
-        dir_array = np.asarray(directions)
-        spacing = slice_dataset.spacing
-        origin = slice_dataset.origin
-        original_image = slice_dataset.read_image()
-
+       
         if new_pipeline:
             # Use seg_pipeline here
-            raise NotImplementedError
+            data, original_shape, origin, spacing, directions, original_image = read_preprocess(run)
+            dir_array = np.asarray(directions)
+            consensus = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=True)
+            lung = consensus[1]
+            covid = consensus[2]
+            info_q.put(("iterbar", 90))
         else:
+            slice_dataset = SliceDataset(run)
+            directions = slice_dataset.directions
+            dir_array = np.asarray(directions)
+            spacing = slice_dataset.spacing
+            origin = slice_dataset.origin
+            original_image = slice_dataset.read_image()
+
             slice_dataloader = slice_dataset.get_dataloader(batch_size)
             info_q.put(("iterbar", 20))
             info_q.put(("write", "Predicting..."))
