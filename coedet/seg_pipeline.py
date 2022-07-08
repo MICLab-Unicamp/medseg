@@ -95,9 +95,13 @@ class SegmentationPipeline():
                 tqdm_iter.write("2.5D Single model isometric consensus prediction...")
                 tqdm_iter.progress(60)
 
-            if not isinstance(spacing, np.ndarray):
+            if isinstance(spacing[0], torch.Tensor):
                 spacing = np.array([x.item() for x in spacing])
+            else:
+                spacing = np.array(spacing)
+            
             dest_shape = (spacing*pre_shape).astype(int).tolist()
+            print(spacing, pre_shape, dest_shape)
             input_volume.to(self.device)
             input_iso = F.interpolate(input_volume, size=dest_shape, mode="trilinear", align_corners=False).cpu()
             input_volume.cpu()

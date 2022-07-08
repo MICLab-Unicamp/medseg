@@ -100,7 +100,8 @@ class MainWindow(threading.Thread):
                                                                 self.info_q,
                                                                 self.args.cpu,
                                                                 self.args.win_itk_path,
-                                                                self.args.linux_itk_path))
+                                                                self.args.linux_itk_path,
+                                                                self.args.debug))
         self.pipeline_comms_thread = threading.Thread(target=self.pipeline_comms)                                                                
         self.pipeline_comms_thread.start()
         self.pipeline.start()

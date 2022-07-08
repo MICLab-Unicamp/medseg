@@ -17,7 +17,7 @@ def read_preprocess(input_path):
     directions = image.GetDirection()
     dir_array = np.asarray(directions)
     origin = image.GetOrigin()
-    spacing = image.GetSpacing()
+    spacing = image.GetSpacing()[::-1]
 
     if len(dir_array) == 9:
         data = np.flip(data, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()  # fix axial orientation for bed on the bottom, from lungmask

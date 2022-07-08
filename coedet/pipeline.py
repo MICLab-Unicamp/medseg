@@ -23,9 +23,11 @@ from coedet.seg_pipeline import SegmentationPipeline
 
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
-             windows_itksnap_path: str, linux_itksnap_path: str):
-
-    pkg_path = os.path.join(site.getsitepackages()[int((os.name=="nt")*1)], "coedet")
+             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool):
+    if debug:
+        pkg_path = 'coedet'
+    else:
+        pkg_path = os.path.join(site.getsitepackages()[int((os.name=="nt")*1)], "coedet")
     if model_path == "best_models":
         new_pipeline = True
     else:
@@ -60,9 +62,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             # Use seg_pipeline here
             data, original_shape, origin, spacing, directions, original_image = read_preprocess(run)
             dir_array = np.asarray(directions)
-            consensus = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=True)
-            lung = consensus[1]
-            covid = consensus[2]
+            _, _, _, _, lung, covid, _, _, _  = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
             info_q.put(("iterbar", 90))
         else:
             slice_dataset = SliceDataset(run)
