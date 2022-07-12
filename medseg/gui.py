@@ -13,8 +13,8 @@ from queue import Empty
 from PIL import ImageTk, Image
 from torchvision.transforms import Resize
 
-from coedet.pipeline import pipeline
-from coedet.monitoring import get_stats
+from medseg.pipeline import pipeline
+from medseg.monitoring import get_stats
 
 if os.name == "nt":
     ICON_PNG = os.path.join(site.getsitepackages()[1], "coedet", "icon.png")

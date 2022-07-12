@@ -5,10 +5,10 @@ import argparse
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import StepLR
 
-from coedet.utils import check_params
-from coedet.loss_metrics import DICELoss, CoUNet3D_metrics
-from coedet.architecture import CoEDET
-from coedet.radam import get_optimizer
+from medseg.utils import check_params
+from medseg.loss_metrics import DICELoss, CoUNet3D_metrics
+from medseg.architecture import CoEDET
+from medseg.radam import get_optimizer
 
 
 class CoEDetModule(pl.LightningModule):

@@ -13,13 +13,13 @@ import SimpleITK as sitk
 from collections import defaultdict
 
 # V1
-from coedet.utils import monitor_itksnap, multi_channel_zoom
-from coedet.postprocess import post_processing
-from coedet.lightning_module import CoEDetModule
-from coedet.image_read import SliceDataset, read_preprocess
+from medseg.utils import monitor_itksnap, multi_channel_zoom
+from medseg.postprocess import post_processing
+from medseg.lightning_module import CoEDetModule
+from medseg.image_read import SliceDataset, read_preprocess
 
 # V2
-from coedet.seg_pipeline import SegmentationPipeline
+from medseg.seg_pipeline import SegmentationPipeline
 
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 

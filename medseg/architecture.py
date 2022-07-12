@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from coedet.edet.modeling_efficientdet import EfficientDetForSemanticSegmentation
+from medseg.edet.modeling_efficientdet import EfficientDetForSemanticSegmentation
 
 
 class CoEDET(nn.Module):

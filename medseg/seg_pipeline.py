@@ -8,9 +8,9 @@ import torch
 import numpy as np
 import subprocess
 from DLPT.post.labeling3d import get_connected_components
-from coedet.seg_2d_module import Seg2DModule
-from coedet.poly_seg_3d_module import PolySeg3DModule
-from coedet.eval_2d_utils import stack_predict, multi_view_consensus
+from medseg.seg_2d_module import Seg2DModule
+from medseg.poly_seg_3d_module import PolySeg3DModule
+from medseg.eval_2d_utils import stack_predict, multi_view_consensus
 import SimpleITK as sitk
 from torch.nn import functional as F
 from DLPT.models.unet_v2 import UNetEncoder

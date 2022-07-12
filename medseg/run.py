@@ -1,7 +1,7 @@
 import argparse
 import multiprocessing as mp
 
-from coedet.gui import MainWindow   
+from medseg.gui import MainWindow   
 
 
 def main():
