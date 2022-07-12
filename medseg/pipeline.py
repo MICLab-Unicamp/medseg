@@ -25,9 +25,9 @@ from medseg.seg_pipeline import SegmentationPipeline
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
              windows_itksnap_path: str, linux_itksnap_path: str, debug: bool):
     if debug:
-        pkg_path = 'coedet'
+        pkg_path = 'medseg'
     else:
-        pkg_path = os.path.join(site.getsitepackages()[int((os.name=="nt")*1)], "coedet")
+        pkg_path = os.path.join(site.getsitepackages()[int((os.name=="nt")*1)], "medseg")
     if model_path == "best_models":
         new_pipeline = True
     else:

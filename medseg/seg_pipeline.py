@@ -20,12 +20,22 @@ from tqdm import tqdm
 class PrintInterface():
     def __init__(self, tqdm_iter):
         self.tqdm_iter = tqdm_iter
+        self.rot90 = False
 
     def write(self, x):
         self.tqdm_iter.put(("write", x))
 
     def progress(self, x):
         self.tqdm_iter.put(("iterbar", x))
+
+    def image_to_front_end(self, x):
+        if self.rot90:
+            x = np.rot90(x, k=2, axes=(0, 1))
+
+        self.tqdm_iter.put(("slice", x))
+
+    def icon(self):
+        self.tqdm_iter.put(("icon", ''))
 
 
 class SegmentationPipeline():
@@ -84,11 +94,12 @@ class SegmentationPipeline():
                 tqdm_iter.write("2.5D Raw prediction...")
                 tqdm_iter.progress(40)
             if self.n is None:
-                output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device)[0]
+                output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
             else:
-                output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device)
+                output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)
             self.model_25d_raw.cpu()
             input_volume = input_volume.cpu()
+            
 
             # Isometric single model 2.5D consensus
             if tqdm_iter is not None:
@@ -114,7 +125,10 @@ class SegmentationPipeline():
                                                  tqdm_iter=None,
                                                  batch_size=self.batch_size,
                                                  extended_2d=1,
-                                                 device=self.device)
+                                                 device=self.device,
+                                                 info_q=tqdm_iter)
+            if tqdm_iter is not None:
+                tqdm_iter.icon()
 
             output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
        

@@ -20,7 +20,7 @@ if os.name == "nt":
     ICON_PNG = os.path.join(site.getsitepackages()[1], "coedet", "icon.png")
 else:
     ICON_PNG = os.path.join(site.getsitepackages()[0], "coedet", "icon.png")
-DEFAULT_TITLE = "CoEDet: Multitasking Lung and findings segmentation on chest CT of COVID patients"
+DEFAULT_TITLE = "Multitasking Lung and findings segmentation on chest CT of COVID patients"
 
 
 # Simple GUI utils
@@ -91,7 +91,7 @@ class MainWindow(threading.Thread):
         else:
             output_folder = self.args.output_folder
 
-        # Separate thread for heavy processing
+        # Separate thread for heavy processing. Threads for using less ram. Multiprocessing might be faster.
         self.pipeline = threading.Thread(target=pipeline, args=(self.args.model_path, 
                                                                 self.runlist, 
                                                                 self.args.batch_size, 
@@ -219,7 +219,7 @@ class MainWindow(threading.Thread):
         self.T.pack(side='top', fill='both')
 
         
-        self.write_to_textbox(f"Welcome to CoEDet predictor! {DEFAULT_TITLE}")
+        self.write_to_textbox(f"Welcome to MEDSeg! {DEFAULT_TITLE}")
         if self.args.output_folder is not None:
             os.makedirs(self.args.output_folder, exist_ok=True)
             self.write_to_textbox(f"Results will be in the '{self.args.output_folder}' folder")

@@ -53,7 +53,7 @@ class E2DStackDataset():
 
 
 
-def stack_predict(model, volume, batch_size, extended_2d=None, device=torch.device("cuda:0"), get_uncertainty=None):
+def stack_predict(model, volume, batch_size, extended_2d=None, device=torch.device("cuda:0"), get_uncertainty=None, info_q=None):
     e2d_stack_dataloader = E2DStackDataset(volume, extended_2d=extended_2d).get_dataloader(batch_size=batch_size, pin_memory=True, num_workers=cpu_count()//2)
     
     outs = []
@@ -62,6 +62,8 @@ def stack_predict(model, volume, batch_size, extended_2d=None, device=torch.devi
         epistemic_uncertainties = []
 
     for input_slice in tqdm(e2d_stack_dataloader, desc=f"Slicing with batch size {batch_size}. Uncertainty: {get_uncertainty}"):
+        package = input_slice[0].numpy().transpose(1, 2, 0).copy()
+        info_q.image_to_front_end(package)
         outs.append(model(input_slice.to(device)).cpu())
         if get_uncertainty is not None:
             epistemic_uncertainty, mean_prediction = get_epistemic_uncertainty(model, input_slice.to(device), n=get_uncertainty)
@@ -79,12 +81,14 @@ def stack_predict(model, volume, batch_size, extended_2d=None, device=torch.devi
         return outs
     
 
-def multi_view_consensus(models, orientations, tqdm_iter, batch_size, extended_2d, device):        
+def multi_view_consensus(models, orientations, tqdm_iter, batch_size, extended_2d, device, info_q=None):        
     y_hats = []
     for i, x_axis in enumerate(orientations):
         if tqdm_iter is not None:
             tqdm_iter.write(f"Multi View Consensus Slicing from axis {i}")
-        y_hat_axis = stack_predict(models[i].to(device), x_axis, batch_size=batch_size, extended_2d=extended_2d, device=device)
+        if info_q is not None and i != 0:
+            info_q.rot90 = True
+        y_hat_axis = stack_predict(models[i].to(device), x_axis, batch_size=batch_size, extended_2d=extended_2d, device=device, info_q=info_q)
         
         if i == 1:
             corrected_output = y_hat_axis.transpose(0, 1, 3, 2, 4)
@@ -97,5 +101,8 @@ def multi_view_consensus(models, orientations, tqdm_iter, batch_size, extended_2
         models[i].cpu()
     y_hat = y_hats[0] + y_hats[1] + y_hats[2]
     y_hat = y_hat/3
+
+    if info_q is not None:
+        info_q.rot90 = False
 
     return y_hat
