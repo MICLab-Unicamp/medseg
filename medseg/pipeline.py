@@ -2,6 +2,7 @@
 Main processing pipeline.
 '''
 import os
+import cv2 as cv
 import datetime
 import numpy as np
 import subprocess
@@ -15,15 +16,18 @@ from collections import defaultdict
 # V1
 from medseg.utils import monitor_itksnap, multi_channel_zoom
 from medseg.postprocess import post_processing
-from medseg.lightning_module import CoEDetModule
+from medseg.lightning_module import MEDSegModule
 from medseg.image_read import SliceDataset, read_preprocess
 
 # V2
 from medseg.seg_pipeline import SegmentationPipeline
 
+# DLPT
+from DLPT.visualization.multiview import MultiViewer
+
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
-             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool):
+             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool, long: bool):
     if debug:
         pkg_path = 'medseg'
     else:
@@ -41,13 +45,13 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         gpu_available = torch.cuda.is_available()
     if new_pipeline:
         model = SegmentationPipeline(best_3d=os.path.join(pkg_path, "poly_lung.ckpt"),
-                                     best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt"),
+                                     best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt") if long else None,
                                      best_25d_raw=os.path.join(pkg_path, "raw_medseg_positive.ckpt"),
                                      batch_size=batch_size,
                                      cpu=cpu,
                                      n=None)  # uncertainty disabled for now
     else:
-        model = CoEDetModule.load_from_checkpoint(os.path.join(pkg_path, "best_coedet.ckpt")).eval()
+        model = MEDSegModule.load_from_checkpoint(os.path.join(pkg_path, "best_coedet.ckpt")).eval()
 
         if gpu_available:
             model = model.cuda()
@@ -62,7 +66,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             # Use seg_pipeline here
             data, original_shape, origin, spacing, directions, original_image = read_preprocess(run)
             dir_array = np.asarray(directions)
-            _, _, _, _, lung, covid, _, _, _  = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
+            _, ensemble_consensus, left_right_label, _, lung, covid, _, _, _, left_lung_volume, right_lung_volume = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
             info_q.put(("iterbar", 90))
         else:
             slice_dataset = SliceDataset(run)
@@ -107,9 +111,23 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             lung, covid = post_processing(cpu_output)
             info_q.put(("iterbar", 90))
 
+        # Statistics
         lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
         output_csv["ID"].append(os.path.basename(run).split(".nii")[0])
-        output_csv["Occupation"].append(f"{lung_ocupation} %")
+        output_csv["Occupation (%)"].append(lung_ocupation)
+        output_csv["Left Lung Volume (L)"].append(left_lung_volume)
+        output_csv["Right Lung Volume (L)"].append(right_lung_volume)
+        output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
+        voxvol = spacing[0]*spacing[1]*spacing[2]
+        left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol, 2)
+        right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol, 2)
+        output_csv["Left Lung Findings Volume (mm³)"].append(left_f_v)
+        output_csv["Right Lung Findings Volume (mm³)"].append(right_f_v)
+        output_csv["Lung Findings Volume (mm³)"].append(round(covid.sum()*voxvol, 2))
+        output_csv["Voxel volume (mm³)"].append(voxvol)
+        output_csv["Left Occupation (%)"] = round((left_f_v*100/1e+6)/left_lung_volume)
+        output_csv["Right Occupation (%)"] = round((right_f_v*100/1e+6)/right_lung_volume)
+
 
         # Undo flips
         if len(dir_array) == 9:
@@ -159,21 +177,29 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         info_q.put(("write", f"Processing finished {run}."))
 
         if display:
+            # ITKSnap
             info_q.put(("write", "Displaying results with itksnap.\nClose itksnap windows to continue."))
             try:
                 if os.name == "nt":
-                    subprocess.run([windows_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
+                    subprocess.Popen([windows_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
                 else:
-                    subprocess.run([linux_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
-                monitor_itksnap()
+                    subprocess.Popen([linux_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
+                
             except Exception as e:
                 info_q.put(("write", "Error displaying results. Do you have itksnap installed?"))
                 print(e)
+
+            # Proprietary multiviewer
+            multi_viewer = MultiViewer(np.concatenate((data.unsqueeze(0), ensemble_consensus)), left_right_label, window_name="Additional outputs (press numbers and S)", threaded=False, cube_side=256)
+            multi_viewer.display(channel_select=0)
+            cv.destroyAllWindows()
+            monitor_itksnap()
+            
         info_q.put(("generalbar", (100*i+100)/runlist_len))
         info_q.put(("write", f"{i+1} volumes processed out of {runlist_len}.\nResult are on the {output_path} folder."))
     uid = str(datetime.datetime.today()).replace('.', '').replace(':', '').replace('-', '').replace(' ', '')
 
-    output_csv_path = os.path.join(output_path, f"coedet_run_statistics_{uid}.csv")
+    output_csv_path = os.path.join(output_path, f"medseg_run_statistics_{uid}.csv")
     pandas.DataFrame.from_dict(output_csv).to_csv(output_csv_path)
     info_q.put(("write", f"Sheet with pulmonary involvement statistics saved in {output_csv_path}."))
     info_q.put(None)

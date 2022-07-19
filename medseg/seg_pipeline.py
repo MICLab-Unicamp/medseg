@@ -51,14 +51,17 @@ class SegmentationPipeline():
         self.n = n
         self.device = torch.device("cpu") if cpu else torch.device("cuda:0")
         self.model_3d = PolySeg3DModule.load_from_checkpoint(best_3d).eval()
-        self.model_25d = Seg2DModule.load_from_checkpoint(best_25d).eval()
+        if best_25d is None:
+            self.model_25d = None
+        else:
+            self.model_25d = Seg2DModule.load_from_checkpoint(best_25d).eval()
         self.model_25d_raw = Seg2DModule.load_from_checkpoint(best_25d_raw).eval()
         self.hparams = self.model_25d_raw.hparams
         self.hparams.experiment_name = '_'.join([self.model_3d.hparams.experiment_name,
-                                                 self.model_25d.hparams.experiment_name,
+                                                 '' if self.model_25d is None else self.model_25d.hparams.experiment_name,
                                                  self.model_25d_raw.hparams.experiment_name])
 
-    def __call__(self, input_volume, spacing, tqdm_iter=None, minimum_return=False):
+    def __call__(self, input_volume, spacing, tqdm_iter, minimum_return=False):
         assert input_volume.max() <= 1.0 and input_volume.min() >= 0.0
         
         if tqdm_iter is not None and not isinstance(tqdm_iter, tqdm):
@@ -66,9 +69,8 @@ class SegmentationPipeline():
 
         with torch.no_grad():
             # 3D
-            if tqdm_iter is not None:
-                tqdm_iter.write("3D Prediction...")
-                tqdm_iter.progress(20)
+            tqdm_iter.write("3D Prediction...")
+            tqdm_iter.progress(20)
             self.model_3d = self.model_3d.to(self.device)
             input_volume = input_volume.to(self.device)
             pre_shape = input_volume.shape[2:]
@@ -77,68 +79,83 @@ class SegmentationPipeline():
             self.model_3d.cpu()
             input_volume = input_volume.cpu()
             output = F.interpolate(output, pre_shape, mode="nearest").squeeze().cpu().numpy()
-            if self.n is not None:
-                print("Computing attention")
-                if tqdm_iter is not None:
-                    tqdm_iter.write("Computing attention...")
-                atts = get_atts_work(self.model_3d.model.enc, pre_shape)
+            
+            left_lung, right_lung = output[1], output[2]
+            voxvol = spacing[0]*spacing[1]*spacing[2]
+            left_lung_volume = round((left_lung.sum()*voxvol)/1e+6, 2)
+            right_lung_volume = round((right_lung.sum()*voxvol)/1e+6, 2)
+            lung_volume = left_lung_volume + right_lung_volume
+
+            tqdm_iter.write(f"Lung volume: {lung_volume}L, left: {left_lung_volume}L, right: {right_lung_volume}L")
+            
+            if lung_volume < 1:
+                # Lung not detected!
+                tqdm_iter.write("ERROR: Lung doesn't seen to be present in image! Aborting.")
+                output_f = output_f_sm_consensus = np.zeros_like(output)
             else:
-                print("Skipping attention computation")
-                if tqdm_iter is not None:
+                # Lung detected
+                if self.n is not None:
+                    print("Computing attention")
+                    tqdm_iter.write("Computing attention...")
+                    atts = get_atts_work(self.model_3d.model.enc, pre_shape)
+                else:
+                    print("Skipping attention computation")
                     tqdm_iter.write("Skipping attention computation")
-                atts = None
-            tqdm_iter.progress(30)
+                    atts = None
                 
-            # 2.5D RAW
-            if tqdm_iter is not None:
+                tqdm_iter.progress(30)
+                    
+                # 2.5D RAW
                 tqdm_iter.write("2.5D Raw prediction...")
                 tqdm_iter.progress(40)
-            if self.n is None:
-                output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
-            else:
-                output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)
-            self.model_25d_raw.cpu()
-            input_volume = input_volume.cpu()
-            
+                if self.n is None:
+                    output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
+                else:
+                    output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)
+                self.model_25d_raw.cpu()
+                input_volume = input_volume.cpu()
+                
+                if self.model_25d is not None:
+                    # Isometric single model 2.5D consensus
+                    tqdm_iter.write("2.5D Single model isometric consensus prediction...")
+                    tqdm_iter.progress(60)
 
-            # Isometric single model 2.5D consensus
-            if tqdm_iter is not None:
-                tqdm_iter.write("2.5D Single model isometric consensus prediction...")
-                tqdm_iter.progress(60)
+                    if isinstance(spacing[0], torch.Tensor):
+                        spacing = np.array([x.item() for x in spacing])
+                    else:
+                        spacing = np.array(spacing)
+                    
+                    dest_shape = (spacing*pre_shape).astype(int).tolist()
+                    print(spacing, pre_shape, dest_shape)
+                    input_volume.to(self.device)
+                    input_iso = F.interpolate(input_volume, size=dest_shape, mode="trilinear", align_corners=False).cpu()
+                    input_volume.cpu()
+                    orientations = [input_iso, 
+                                    input_iso.permute(0, 1, 3, 2, 4), 
+                                    input_iso.permute(0, 1, 4, 2, 3)]
+                    
+                    output_f_iso = multi_view_consensus([self.model_25d for _ in range(3)],
+                                                        orientations=orientations,
+                                                        tqdm_iter=None,
+                                                        batch_size=self.batch_size,
+                                                        extended_2d=1,
+                                                        device=self.device,
+                                                        info_q=tqdm_iter)
+                    tqdm_iter.icon()
 
-            if isinstance(spacing[0], torch.Tensor):
-                spacing = np.array([x.item() for x in spacing])
-            else:
-                spacing = np.array(spacing)
-            
-            dest_shape = (spacing*pre_shape).astype(int).tolist()
-            print(spacing, pre_shape, dest_shape)
-            input_volume.to(self.device)
-            input_iso = F.interpolate(input_volume, size=dest_shape, mode="trilinear", align_corners=False).cpu()
-            input_volume.cpu()
-            orientations = [input_iso, 
-                            input_iso.permute(0, 1, 3, 2, 4), 
-                            input_iso.permute(0, 1, 4, 2, 3)]
-            
-            output_f_iso = multi_view_consensus([self.model_25d for _ in range(3)],
-                                                 orientations=orientations,
-                                                 tqdm_iter=None,
-                                                 batch_size=self.batch_size,
-                                                 extended_2d=1,
-                                                 device=self.device,
-                                                 info_q=tqdm_iter)
-            if tqdm_iter is not None:
-                tqdm_iter.icon()
+                    output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
+                else:
+                    tqdm_iter.write("Skipping 2.5D single model isometric consensus prediction due to long prediction button unchecked...")
+                    tqdm_iter.progress(60)
+                    tqdm_iter.icon()
+                    output_f_sm_consensus = output_f
 
-            output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
-       
-        if tqdm_iter is not None:
-            tqdm_iter.write("Post-processing...")
-            tqdm_iter.progress(80)
+        tqdm_iter.write("Post-processing...")
+        tqdm_iter.progress(80)
         output_logits = {"3d_bg": output[0],
-                         "3d_left_lung": output[1],
-                         "3d_right_lung": output[2],
-                         "3d_lung": output[1] + output[2],
+                         "3d_left_lung": left_lung,
+                         "3d_right_lung": right_lung,
+                         "3d_lung": left_lung + right_lung,
 
                          "25d_bg": output_f[0],
                          "25d_lung": output_f[1],
@@ -163,7 +180,9 @@ class SegmentationPipeline():
         lung = ensemble_consensus[1] + ensemble_consensus[2]
         findings = ensemble_consensus[2]
         lung, findings = (lung > 0.5).astype(np.int32), (findings > 0.5).astype(np.int32)
-        lung, lung_lc, lung_labeled = get_connected_components(lung, return_largest=2)
+        lung, _, _ = get_connected_components(lung, return_largest=2)
+        lung = lung.astype(np.uint8)
+        findings = findings.astype(np.uint8)
 
         # Filter by lung region
         findings = findings*lung
@@ -178,14 +197,14 @@ class SegmentationPipeline():
         ensemble_consensus[1] = ensemble_consensus[1] * lung
         ensemble_consensus[2] = ensemble_consensus[2] * lung
 
-        ensemble_consensus_label = ensemble_consensus.argmax(axis=0)
-        left_right_label = output.argmax(axis=0)
+        ensemble_consensus_label = ensemble_consensus.argmax(axis=0).astype(np.uint8) # save memory with uint8
+        left_right_label = output.argmax(axis=0).astype(np.uint8)
 
         torch.cuda.empty_cache()
         if minimum_return:
             return ensemble_consensus
         else:
-            return ensemble_consensus_label, ensemble_consensus, left_right_label, output, lung, findings, atts, epistemic_uncertainties, mean_predictions 
+            return ensemble_consensus_label, ensemble_consensus, left_right_label, output, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume 
 
 
 def get_atts_work(encoder: UNetEncoder, pre_shape):

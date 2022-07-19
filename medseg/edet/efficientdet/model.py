@@ -54,6 +54,19 @@ class SeparableConvBlock(nn.Module):
         return x
 
 
+def align_sum(to_be_summed, upsample, align=True):
+    '''
+    Aligns x1 with x2 and sums
+    Based on UNet upsample concatenation alignment code
+    '''
+    if align:
+        diffX = to_be_summed.size()[2] - upsample.size()[2]
+        diffY = to_be_summed.size()[3] - upsample.size()[3]
+        upsample = torch.nn.functional.pad(upsample, (diffY // 2, diffY - diffY // 2, diffX // 2, diffX - diffX // 2))
+
+    return to_be_summed + upsample
+
+
 class BiFPN(nn.Module):
     """
     modified by Zylo117
@@ -218,29 +231,29 @@ class BiFPN(nn.Module):
         p6_w1 = self.p6_w1_relu(self.p6_w1)
         weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(
-            weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
+        p6_up = self.conv6_up(self.swish(align_sum(
+            weight[0] * p6_in, weight[1] * self.p6_upsample(p7_in))))
 
         # Weights for P5_0 and P6_1 to P5_1
         p5_w1 = self.p5_w1_relu(self.p5_w1)
         weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
         # Connections for P5_0 and P6_0 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(
-            weight[0] * p5_in + weight[1] * self.p5_upsample(p6_up)))
+        p5_up = self.conv5_up(self.swish(align_sum(
+            weight[0] * p5_in, weight[1] * self.p5_upsample(p6_up))))
 
         # Weights for P4_0 and P5_1 to P4_1
         p4_w1 = self.p4_w1_relu(self.p4_w1)
         weight = p4_w1 / (torch.sum(p4_w1, dim=0) + self.epsilon)
         # Connections for P4_0 and P5_0 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(
-            weight[0] * p4_in + weight[1] * self.p4_upsample(p5_up)))
+        p4_up = self.conv4_up(self.swish(align_sum(
+            weight[0] * p4_in, weight[1] * self.p4_upsample(p5_up))))
 
         # Weights for P3_0 and P4_1 to P3_2
         p3_w1 = self.p3_w1_relu(self.p3_w1)
         weight = p3_w1 / (torch.sum(p3_w1, dim=0) + self.epsilon)
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(
-            weight[0] * p3_in + weight[1] * self.p3_upsample(p4_up)))
+        p3_out = self.conv3_up(self.swish(align_sum(
+            weight[0] * p3_in, weight[1] * self.p3_upsample(p4_up))))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -294,16 +307,16 @@ class BiFPN(nn.Module):
         # P7_0 to P7_2
 
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(p6_in + self.p6_upsample(p7_in)))
+        p6_up = self.conv6_up(self.swish(align_sum(p6_in, self.p6_upsample(p7_in))))
 
         # Connections for P5_0 and P6_1 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(p5_in + self.p5_upsample(p6_up)))
+        p5_up = self.conv5_up(self.swish(align_sum(p5_in, self.p5_upsample(p6_up))))
 
         # Connections for P4_0 and P5_1 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(p4_in + self.p4_upsample(p5_up)))
+        p4_up = self.conv4_up(self.swish(align_sum(p4_in, self.p4_upsample(p5_up))))
 
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(p3_in + self.p3_upsample(p4_up)))
+        p3_out = self.conv3_up(self.swish(align_sum(p3_in, self.p3_upsample(p4_up))))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -408,13 +421,32 @@ class Classifier(nn.Module):
 
 
 class SegmentationClasssificationHead(nn.Module):
-    def __init__(self, in_channels, num_classes, num_layers, onnx_export=False, apply_sigmoid=False):
+    def __init__(self, in_channels, num_classes, num_layers, onnx_export=False, apply_sigmoid=False, dropout=None):
         super(SegmentationClasssificationHead, self).__init__()
         self.num_classes = num_classes
         self.num_layers = num_layers
         self.apply_sigmoid = apply_sigmoid
         self.conv_list = nn.ModuleList(
             [SeparableConvBlock(in_channels, in_channels, norm=False, activation=False) for i in range(num_layers)])
+        self.dropout = dropout
+        
+        # Dropout parametrization for experiments
+        if dropout is None:
+            print("Not using dropout in training")
+            self.dropout_list = nn.ModuleList([nn.Identity() for _ in range(num_layers)])
+        elif dropout == "single":
+            print("Using single dropout in seg head")
+            self.dropout_list = []
+            for i in range(num_layers):
+                if i  == 0:
+                    self.dropout_list.append(nn.Dropout2d(p=0.1))
+                else:
+                    self.dropout_list.append(nn.Identity())
+            self.dropout_list = nn.ModuleList(self.dropout_list)
+        elif dropout == "full":
+            print("Using full dropout in seg head")
+            self.dropout_list = nn.ModuleList([nn.Dropout2d(p=0.1) for i in range(num_layers)])  # p=0.1 from "Analysis on the Dropout Effect in Convolutional Neural Networks"
+        
         self.bn_list = nn.ModuleList(
             [nn.BatchNorm2d(in_channels, momentum=0.01, eps=1e-3) for i in range(num_layers)])
         self.header = SeparableConvBlock(
@@ -422,8 +454,9 @@ class SegmentationClasssificationHead(nn.Module):
         self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
 
     def forward(self, feat):
-        for i, bn, conv in zip(range(self.num_layers), self.bn_list, self.conv_list):
-            feat = conv(feat)
+        for i, bn, dropout_layer, conv in zip(range(self.num_layers), self.bn_list, self.dropout_list, self.conv_list):
+            feat = dropout_layer(feat)  # positioning following "Efficient and Effective Dropout for Deep Convolutional Neural Networks"
+            feat = conv(feat)    
             feat = bn(feat)
             feat = self.swish(feat)
         feat = self.header(feat)
@@ -439,9 +472,12 @@ class EfficientNet(nn.Module):
     modified by Zylo117
     """
 
-    def __init__(self, compound_coef, load_weights=False):
+    def __init__(self, compound_coef, load_weights=True):
         super(EfficientNet, self).__init__()
-        model = EffNet.from_pretrained(f'efficientnet-b{compound_coef}')
+        if load_weights:
+            model = EffNet.from_pretrained(f'efficientnet-b{compound_coef}')
+        else:
+            model = EffNet.from_name(f'efficientnet-b{compound_coef}')
         del model._conv_head
         del model._bn1
         del model._avg_pooling

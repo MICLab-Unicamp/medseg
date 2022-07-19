@@ -17,9 +17,9 @@ from medseg.pipeline import pipeline
 from medseg.monitoring import get_stats
 
 if os.name == "nt":
-    ICON_PNG = os.path.join(site.getsitepackages()[1], "coedet", "icon.png")
+    ICON_PNG = os.path.join(site.getsitepackages()[1], "medseg", "icon.png")
 else:
-    ICON_PNG = os.path.join(site.getsitepackages()[0], "coedet", "icon.png")
+    ICON_PNG = os.path.join(site.getsitepackages()[0], "medseg", "icon.png")
 DEFAULT_TITLE = "Multitasking Lung and findings segmentation on chest CT of COVID patients"
 
 
@@ -101,7 +101,8 @@ class MainWindow(threading.Thread):
                                                                 self.args.cpu,
                                                                 self.args.win_itk_path,
                                                                 self.args.linux_itk_path,
-                                                                self.args.debug))
+                                                                self.args.debug,
+                                                                bool(self.long.get())))
         self.pipeline_comms_thread = threading.Thread(target=self.pipeline_comms)                                                                
         self.pipeline_comms_thread.start()
         self.pipeline.start()
@@ -260,6 +261,11 @@ class MainWindow(threading.Thread):
         c1 = tk.Checkbutton(self.ws, text='Display result', variable=self.display, onvalue=1, offvalue=0, state='active')
         c1.config(font=("Sans", "14"))
         c1.pack(side='left')
+
+        self.long = tk.IntVar(value=0)
+        c2 = tk.Checkbutton(self.ws, text='Long prediction', variable=self.long, onvalue=1, offvalue=0, state='active')
+        c2.config(font=("Sans", "14"))
+        c2.pack(side='left')
 
         boldStyle = Style ()
         boldStyle.configure("Bold.TButton", font = ('Sans','10','bold'))

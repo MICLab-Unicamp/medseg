@@ -7,11 +7,11 @@ from torch.optim.lr_scheduler import StepLR
 
 from medseg.utils import check_params
 from medseg.loss_metrics import DICELoss, CoUNet3D_metrics
-from medseg.architecture import CoEDET
+from medseg.architecture import MEDSeg
 from medseg.radam import get_optimizer
 
 
-class CoEDetModule(pl.LightningModule):
+class MEDSegModule(pl.LightningModule):
     '''
     Generic classifier that can work with different architectures and datasets.
     '''
@@ -28,7 +28,7 @@ class CoEDetModule(pl.LightningModule):
         self.loss, self.metric = DICELoss(volumetric=True if '3d' in self.hparams.paradigm else False, per_channel=True), CoUNet3D_metrics()
         self.loss_str, self.metric_str = str(self.loss), str(self.metric)
 
-        architecture = CoEDET
+        architecture = MEDSeg
         self.model = architecture()
 
     def forward(self, x):

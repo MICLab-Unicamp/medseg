@@ -97,7 +97,7 @@ class EfficientDet(nn.Module):
 
 class EfficientDetForSemanticSegmentation(nn.Module):
 
-    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False):
+    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None):
         super().__init__()
         self.compound_coef = compound_coef
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
@@ -127,7 +127,8 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         self.classifier = SegmentationClasssificationHead(in_channels=bifpn_channels,
                                                           num_classes=self.num_classes,
                                                           num_layers=repeat,  # should it be repeat - 1?
-                                                          apply_sigmoid=apply_sigmoid
+                                                          apply_sigmoid=apply_sigmoid,
+                                                          dropout=dropout
                                                           )
 
         self.backbone_net = EfficientNet(
@@ -151,11 +152,17 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         return features
 
     def forward(self, inputs):
+        self.input_shape = inputs.shape
         features = self.extract_backbone_features(inputs)
         feat_map = self.extract_bifpn_features(features)[0]
 
         if self.expand_bifpn:
             feat_map = self.expand_conv(feat_map)
+
+            # Features must be same size as input
+            diffX = inputs.shape[2] - feat_map.size()[2]
+            diffY = inputs.shape[3] - feat_map.size()[3]
+            feat_map = torch.nn.functional.pad(feat_map, (diffY // 2, diffY - diffY // 2, diffX // 2, diffX - diffX // 2))
 
         classification = self.classifier(feat_map)
 
