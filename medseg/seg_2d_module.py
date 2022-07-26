@@ -7,11 +7,9 @@ import random
 from torch import nn
 from torch.optim.lr_scheduler import StepLR
 import matplotlib.pyplot as plt
-from DLPT.optimizers import get_optimizer
-from DLPT.loss.dice import DICELoss
-from DLPT.metrics.segmentation import DICEMetric
-from DLPT.models.coedet import CoEDET
-from DLPT.models.unet_v2 import UNet
+from medseg.utils import get_optimizer, DICELoss, DICEMetric
+from medseg.architecture import MEDSeg
+from medseg.unet_v2 import UNet
 
 
 class Seg2DModule(pl.LightningModule):
@@ -32,7 +30,7 @@ class Seg2DModule(pl.LightningModule):
         if unet:
             self.model = UNet(self.hparams.nin, self.hparams.seg_nout, True, "2d", 64, dropout=dropout)
         else:
-            self.model = CoEDET(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, dropout=dropout)
+            self.model = MEDSeg(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, dropout=dropout)
         
         self.pretrained_weights = self.hparams.pretrained_weights
         if self.pretrained_weights is not None:

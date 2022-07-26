@@ -3,11 +3,8 @@ This should handle transforming targets, currently only implemented for lung var
 '''
 import pytorch_lightning as pl
 from torch.optim.lr_scheduler import StepLR
-from DLPT.optimizers import get_optimizer
-from DLPT.loss.dice import DICELoss
-from DLPT.metrics.segmentation import DICEMetric
-from DLPT.models.unet_v2 import UNet
-from DLPT.visualization.simpleitk import itk_snap_spawner
+from medseg.utils import get_optimizer, DICELoss, DICEMetric, itk_snap_spawner
+from medseg.unet_v2 import UNet
 
 
 class PolySeg3DModule(pl.LightningModule):
