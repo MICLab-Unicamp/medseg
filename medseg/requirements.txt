@@ -7,7 +7,7 @@ torch
 pandas
 torchvision
 pytorch-lightning
-efficientnet_pytorch
+efficientnet_pytorch==0.7.0
 connected-components-3d
 psutil
 gputil
