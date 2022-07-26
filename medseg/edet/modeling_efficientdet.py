@@ -97,23 +97,33 @@ class EfficientDet(nn.Module):
 
 class EfficientDetForSemanticSegmentation(nn.Module):
 
-    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None):
+    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None, backbone="effnet"):
         super().__init__()
         self.compound_coef = compound_coef
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
         self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536]
         self.num_classes = num_classes
         self.expand_bifpn = expand_bifpn
+        self.backbone = backbone
 
-        if expand_bifpn:
+        if self.expand_bifpn == True or self.expand_bifpn == "conv":
+            print("Using transposed convolution for upsample")
             self.expand_conv = nn.Sequential(nn.ConvTranspose2d(128, 128, 2, 2),
                                              nn.BatchNorm2d(128),
                                              MemoryEfficientSwish())
-
+        elif self.expand_bifpn == "upsample":
+            print("Using upsample for bifpn expansion")
+            self.expand_conv = nn.UpsamplingBilinear2d(scale_factor=2)
+        elif self.expand_bifpn == False:
+            print("Bifpn expansion disabled")
+            pass
+        else:
+            raise ValueError(f"Expand bifpn {self.expand_bifpn} not supported!")
+        
         conv_channel_coef = {
             # the channels of P2/P3/P4.
             0: [16, 24, 40],
-            4: [24, 32, 56],
+            4: [24, 32, 56]
         }
 
         bifpn_channels = 128
@@ -130,9 +140,8 @@ class EfficientDetForSemanticSegmentation(nn.Module):
                                                           apply_sigmoid=apply_sigmoid,
                                                           dropout=dropout
                                                           )
-
-        self.backbone_net = EfficientNet(
-            self.backbone_compound_coef[self.compound_coef], load_weights)
+        if self.backbone == "effnet":
+            self.backbone_net = EfficientNet(self.backbone_compound_coef[self.compound_coef], load_weights)
 
     def freeze_bn(self):
         for m in self.modules():
@@ -142,7 +151,8 @@ class EfficientDetForSemanticSegmentation(nn.Module):
     def extract_backbone_features(self, inputs):
         max_size = inputs.shape[-1]
 
-        p2, p3, p4, _ = self.backbone_net(inputs)
+        if self.backbone == "effnet":
+            p2, p3, p4, _ = self.backbone_net(inputs)
 
         features = (p2, p3, p4)
         return features
