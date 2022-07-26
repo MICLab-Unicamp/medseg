@@ -7,13 +7,12 @@ import uuid
 import torch
 import numpy as np
 import subprocess
-from DLPT.post.labeling3d import get_connected_components
+from medseg.postprocess import get_connected_components
 from medseg.seg_2d_module import Seg2DModule
 from medseg.poly_seg_3d_module import PolySeg3DModule
 from medseg.eval_2d_utils import stack_predict, multi_view_consensus
 import SimpleITK as sitk
 from torch.nn import functional as F
-from DLPT.models.unet_v2 import UNetEncoder
 from tqdm import tqdm
 
 
@@ -207,7 +206,7 @@ class SegmentationPipeline():
             return ensemble_consensus_label, ensemble_consensus, left_right_label, output, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume 
 
 
-def get_atts_work(encoder: UNetEncoder, pre_shape):
+def get_atts_work(encoder, pre_shape):
     '''
     Gets attention from unt encoder specifically
     '''
