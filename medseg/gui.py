@@ -148,15 +148,24 @@ class MainWindow(threading.Thread):
 
         if self.input_path is None:
             pass
-        elif os.path.exists(self.input_path) and (".nii" in self.input_path or os.path.isdir(self.input_path)):
+        elif os.path.exists(self.input_path) and (".nii" in self.input_path or os.path.isdir(self.input_path) or ".dcm" in self.input_path):
             if os.path.isdir(self.input_path):
-                self.write_to_textbox(f"Searching {self.input_path} for nift files...")
+                self.write_to_textbox(f"Searching {self.input_path} for files...")
                 self.runlist = glob.glob(os.path.join(self.input_path, "*.nii")) + glob.glob(os.path.join(self.input_path, "*.nii.gz"))
+                if len(self.runlist) == 0:
+                    self.write_to_textbox("Did not find NifT files. Looking for .dcm series...")
+                    self.runlist = glob.glob(os.path.join(self.input_path, "*.dcm"))
+                    dcms = [os.path.basename(x) for x in self.runlist]
+                    if len(self.runlist) > 0:
+                        self.write_to_textbox(f"Found {dcms} DCM inside folder {self.input_path}.")
+                        self.runlist = [self.runlist]
+                    else:
+                        alert_dialog("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
             else:
                 self.runlist = [self.input_path]
             self.write_to_textbox(f"Runlist: {self.runlist}.\n{len(self.runlist)} volumes detected.\nClick start processing to start.")
         else:
-            alert_dialog("No valid volume or folder given, please give a nift volume or folder with NifTs.")
+            alert_dialog("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
     
     def write_to_textbox(self, s):
         self.T.insert(tk.END, f"\n{s}\n")

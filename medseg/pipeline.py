@@ -111,21 +111,24 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
 
         # Statistics
         lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
-        output_csv["ID"].append(os.path.basename(run).split(".nii")[0])
+        if isinstance(run, list):
+            ID = os.path.basename(os.path.dirname(run[0]))
+        else:
+            ID = os.path.basename(run).split(".")[0]
+        output_csv["ID"].append(ID)
         output_csv["Occupation (%)"].append(lung_ocupation)
         output_csv["Left Lung Volume (L)"].append(left_lung_volume)
         output_csv["Right Lung Volume (L)"].append(right_lung_volume)
         output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
         voxvol = spacing[0]*spacing[1]*spacing[2]
-        left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol, 2)
-        right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol, 2)
-        output_csv["Left Lung Findings Volume (mm³)"].append(left_f_v)
-        output_csv["Right Lung Findings Volume (mm³)"].append(right_f_v)
-        output_csv["Lung Findings Volume (mm³)"].append(round(covid.sum()*voxvol, 2))
+        left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
+        right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
+        output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
+        output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
+        output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
         output_csv["Voxel volume (mm³)"].append(voxvol)
         output_csv["Left Occupation (%)"] = round((left_f_v*100/1e+6)/left_lung_volume)
         output_csv["Right Occupation (%)"] = round((right_f_v*100/1e+6)/right_lung_volume)
-
 
         # Undo flips
         if len(dir_array) == 9:
@@ -135,10 +138,10 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         merged = lung + covid
         
         # Create save paths
-        output_input_path = os.path.join(output_path, os.path.basename(run).replace(".nii", "_input.nii"))
-        output_lung_path = os.path.join(output_path, os.path.basename(run).replace(".nii", "_lung.nii"))
-        output_findings_path = os.path.join(output_path, os.path.basename(run).replace(".nii", "_findings.nii"))
-        output_merged_path = os.path.join(output_path, os.path.basename(run).replace(".nii", "_lung_and_findings.nii"))
+        output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
+        output_lung_path = os.path.join(output_path, ID + "_lung.nii.gz")
+        output_findings_path = os.path.join(output_path, ID + "_findings.nii.gz")
+        output_merged_path = os.path.join(output_path, ID + "_lung_and_findings.nii.gz")
 
         # Create images
         writer = sitk.ImageFileWriter()
@@ -188,9 +191,12 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
                 print(e)
 
             # Proprietary multiviewer
-            multi_viewer = MultiViewer(np.concatenate((data.unsqueeze(0), ensemble_consensus)), left_right_label, window_name="Additional outputs (press numbers and S)", threaded=False, cube_side=256)
-            multi_viewer.display(channel_select=0)
-            cv.destroyAllWindows()
+            try:
+                multi_viewer = MultiViewer(np.concatenate((data.unsqueeze(0), ensemble_consensus)), left_right_label, window_name="Additional outputs (press numbers and S)", threaded=False, cube_side=256)
+                multi_viewer.display(channel_select=0)
+                cv.destroyAllWindows()
+            except Exception as e:
+                print(f"Couldn't visualize with multiviewer: {e}")
             monitor_itksnap()
             
         info_q.put(("generalbar", (100*i+100)/runlist_len))
