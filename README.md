@@ -57,7 +57,7 @@ If you use virtual environments, it is safer to install in a new virtual environ
 
 ## Running 
 
-To run, just call coedet in a terminal.
+To run, just call it in a terminal.
 
     medseg
 
