@@ -6,7 +6,9 @@ from medseg.gui import MainWindow
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input_folder', type=str, default=None, help="Use to indicate input folder to run without using the GUI.")
     parser.add_argument('-o', '--output_folder', type=str, default=None, help="Use to indicate output folder without using the GUI. Will try to create if it doesn't exist.")
+    parser.add_argument('--atm_mode', action="store_true", help="Enables ATM mode, where only airway segmentation model is used.")
     parser.add_argument('--debug', action="store_true", help="Debug.")
     parser.add_argument('-bs', '--batch_size', type=int, default=1)
     parser.add_argument('-m', '--model_path', type=str, default="best_models")
@@ -21,7 +23,9 @@ def main():
 
 def main_cpu():
     parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input_folder', type=str, default=None, help="Use to indicate input folder to run without using the GUI.")
     parser.add_argument('-o', '--output_folder', type=str, default=None, help="Use to indicate output folder without using the GUI. Will try to create if it doesn't exist.")
+    parser.add_argument('--atm_mode', action="store_true", help="Enables ATM mode, where only airway segmentation model is used.")
     parser.add_argument('--debug', action="store_true", help="Debug.")
     parser.add_argument('-bs', '--batch_size', type=int, default=1)
     parser.add_argument('-m', '--model_path', type=str, default="best_models")

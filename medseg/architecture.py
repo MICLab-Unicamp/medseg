@@ -5,20 +5,20 @@ from medseg.edet.modeling_efficientdet import EfficientDetForSemanticSegmentatio
 
 
 class MEDSeg(nn.Module):
-    def __init__(self, nin=3, nout=3, apply_sigmoid=False, dropout=None, backbone="effnet", pretrained=True):
+    def __init__(self, nin=3, nout=3, apply_sigmoid=False, dropout=None, backbone="effnet", pretrained=True, expand_bifpn="conv"):
         super().__init__()
-        if backbone == "effnet":
-            self.model = EfficientDetForSemanticSegmentation(num_classes=nout, load_weights=pretrained,
-                                                             apply_sigmoid=apply_sigmoid, expand_bifpn=True, dropout=dropout)
-        elif backbone == "convnext":
-            # TODO
-            raise NotImplementedError
+        self.model = EfficientDetForSemanticSegmentation(num_classes=nout, 
+                                                         load_weights=pretrained,
+                                                         apply_sigmoid=apply_sigmoid, 
+                                                         expand_bifpn=expand_bifpn, 
+                                                         dropout=dropout,
+                                                         backbone=backbone)
 
         self.nin = nin
         if self.nin not in [1, 3]:
             self.in_conv = nn.Conv2d(in_channels=self.nin, out_channels=3, kernel_size=1, stride=1, padding=0, bias=False)
 
-        print(f"MEDSeg initialized. nin: {nin}, nout: {nout}, apply_sigmoid: {apply_sigmoid}")
+        print(f"MEDSeg initialized. nin: {nin}, nout: {nout}, apply_sigmoid: {apply_sigmoid}, dropout: {dropout}, backbone: {backbone}, pretrained: {pretrained}, expand_bifpn: {expand_bifpn}")
 
     def forward(self, x):
         if self.nin == 1:

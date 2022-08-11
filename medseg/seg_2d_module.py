@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torchmetrics
 import random
 from torch import nn
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 import matplotlib.pyplot as plt
 from medseg.utils import get_optimizer, DICELoss, DICEMetric
 from medseg.architecture import MEDSeg
@@ -22,6 +22,10 @@ class Seg2DModule(pl.LightningModule):
         self.findings_only = getattr(self.hparams, "findings_only", False)
         self.weight_decay = getattr(self.hparams, "weight_decay", None)
         self.scheduling_factor = getattr(self.hparams, "scheduling_factor", None)
+        self.scheduling = getattr(self.hparams, "scheduling", "step")
+        self.scratch = getattr(self.hparams, "scratch", False)
+        self.expand_bifpn = getattr(self.hparams, "expand_bifpn", "conv")
+        self.backbone = getattr(self.hparams, "backbone", "effnet")
 
         if dropout == True:
             print("WARNING: Replacing old hparams true dropout by full dropout")
@@ -30,7 +34,7 @@ class Seg2DModule(pl.LightningModule):
         if unet:
             self.model = UNet(self.hparams.nin, self.hparams.seg_nout, True, "2d", 64, dropout=dropout)
         else:
-            self.model = MEDSeg(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, dropout=dropout)
+            self.model = MEDSeg(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, backbone=self.backbone, expand_bifpn=self.expand_bifpn, dropout=dropout, pretrained=not self.scratch)
         
         self.pretrained_weights = self.hparams.pretrained_weights
         if self.pretrained_weights is not None:
@@ -117,7 +121,7 @@ class Seg2DModule(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x, y, meta = train_batch
-        if self.findings_only:
+        if self.findings_only and y.shape[1] == 3:
             y = y[:, 2:3]  
         if self.hparams.debug:
             print("Train step debug")
@@ -131,7 +135,7 @@ class Seg2DModule(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y, meta = val_batch
-        if self.findings_only:
+        if self.findings_only and y.shape[1] == 3:
             y = y[:, 2:3]  
         if self.hparams.debug:
             print("Validation step debug")
@@ -148,11 +152,16 @@ class Seg2DModule(pl.LightningModule):
         '''
         opt = getattr(self.hparams, "opt", "Adam")
         optimizer = get_optimizer(opt, self.model.parameters(), self.hparams.lr, wd=self.weight_decay)
-        print(f"Weight decay: {self.weight_decay}")
+        print(f"Opt: {opt}, Weight decay: {self.weight_decay}")
 
-        if self.scheduling_factor is not None:
-            print(f"Using step LR {self.scheduling_factor}!")
-            scheduler = StepLR(optimizer, 1, self.scheduling_factor)
-            return [optimizer], [scheduler]
-        else:
+        if self.scheduling == "step" and self.scheduling_factor is None:
+            print("Not using any scheduler")
             return optimizer
+        elif self.scheduling_factor is not None and self.scheduling == "step":
+            print(f"Using step LR {self.scheduling_factor}!")
+            scheduler = StepLR(optimizer, 1, self.scheduling_factor, verbose=True)
+            return [optimizer], [scheduler]
+        elif self.scheduling == "cosine":
+            print(f"Using CosineAnnealingLR with tmax {self.scheduling_factor}!")
+            scheduler = CosineAnnealingLR(optimizer, T_max=self.scheduling_factor, verbose=True)
+            return [optimizer], [scheduler]

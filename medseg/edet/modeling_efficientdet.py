@@ -99,6 +99,7 @@ class EfficientDetForSemanticSegmentation(nn.Module):
 
     def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None, backbone="effnet"):
         super().__init__()
+        assert backbone == "effnet", "Backbones other than effnet are not public yet."
         self.compound_coef = compound_coef
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
         self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536]
@@ -107,15 +108,22 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         self.backbone = backbone
 
         if self.expand_bifpn == True or self.expand_bifpn == "conv":
-            print("Using transposed convolution for upsample")
+            print("Using transposed convolution for bifpn result expansion and upsample 2 for convnext features")
             self.expand_conv = nn.Sequential(nn.ConvTranspose2d(128, 128, 2, 2),
                                              nn.BatchNorm2d(128),
                                              MemoryEfficientSwish())
+            self.convnext_upsample_scale = 2
         elif self.expand_bifpn == "upsample":
-            print("Using upsample for bifpn expansion")
+            print("Using upsample for bifpn result expansion and upsample 2 expansion of convnext features")
             self.expand_conv = nn.UpsamplingBilinear2d(scale_factor=2)
+            self.convnext_upsample_scale = 2
+        elif self.expand_bifpn == "upsample_4":
+            print("Using upsample 4 for bifpn result expansion and no expansion of convnext features")
+            self.expand_conv = nn.UpsamplingBilinear2d(scale_factor=4)
+            self.convnext_upsample_scale = 0
         elif self.expand_bifpn == False:
             print("Bifpn expansion disabled")
+            self.convnext_upsample_scale = 4
             pass
         else:
             raise ValueError(f"Expand bifpn {self.expand_bifpn} not supported!")
@@ -123,8 +131,14 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         conv_channel_coef = {
             # the channels of P2/P3/P4.
             0: [16, 24, 40],
-            4: [24, 32, 56]
+            4: [24, 32, 56],
+            "convnext": [96, 192, 384]
         }
+
+        if self.backbone == "convnext":
+            print("Changing compound coeff of BiFPN due to convnext backbone")
+            compound_coef = "convnext"
+            print(f"Convnext upsample scale {self.convnext_upsample_scale}")
 
         bifpn_channels = 128
         self.bifpn = nn.Sequential(
@@ -142,6 +156,8 @@ class EfficientDetForSemanticSegmentation(nn.Module):
                                                           )
         if self.backbone == "effnet":
             self.backbone_net = EfficientNet(self.backbone_compound_coef[self.compound_coef], load_weights)
+        elif self.backbone == "convnext":
+            raise NotImplementedError("Our implementation of convnext is not public yet.")
 
     def freeze_bn(self):
         for m in self.modules():
@@ -153,6 +169,8 @@ class EfficientDetForSemanticSegmentation(nn.Module):
 
         if self.backbone == "effnet":
             p2, p3, p4, _ = self.backbone_net(inputs)
+        elif self.backbone == "convnext":
+            p2, p3, p4 = self.backbone_net.forward_seg_features(inputs, self.convnext_upsample_scale)
 
         features = (p2, p3, p4)
         return features

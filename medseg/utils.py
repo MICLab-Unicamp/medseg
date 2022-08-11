@@ -18,6 +18,17 @@ from scipy.ndimage import zoom
 current_point = None
 
 
+class DummyTkIntVar():
+    def __init__(self, value):
+        self.value = value
+
+    def __bool__(self):
+        return bool(self.value)
+
+    def get(self):
+        return self.value
+
+
 def zoom_worker(x):
     channel, zoom_factor, order = x
     return zoom(channel, zoom_factor, order=order)

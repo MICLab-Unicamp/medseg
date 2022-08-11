@@ -23,10 +23,10 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
-    install_requires=['setuptools', 'numpy', 'rich', 'pillow', 'scipy', 'tqdm', 'torch', 'torchvision', 'pytorch-lightning', 'efficientnet_pytorch==0.7.0', 'connected-components-3d', 'psutil', 'gputil', 'SimpleITK==2.0.2'],
+    install_requires=['setuptools', 'numpy', 'rich', 'pillow', 'scipy', 'tqdm', 'torch', 'torchvision', 'pytorch-lightning', 'efficientnet_pytorch', 'connected-components-3d', 'psutil', 'gputil', 'SimpleITK==2.0.2'],
     entry_points={
         'console_scripts': ["medseg = medseg.run:main", "medseg_cpu = medseg.run:main_cpu"]
     },
     include_package_data=True,
-    package_data={'medseg': ["best_coedet.ckpt", "icon.png", "poly_lung.ckpt", "raw_medseg_positive.ckpt", "sme2d_coedet_fiso.ckpt"]}
+    package_data={'medseg': ["best_coedet.ckpt", "icon.png", "poly_lung.ckpt", "raw_medseg_positive.ckpt", "sme2d_coedet_fiso.ckpt", "airway.ckpt"]}
 )

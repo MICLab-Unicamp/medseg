@@ -7,6 +7,8 @@ http://dx.doi.org/10.1117/12.2606118
 The presentation can be watched in YouTube:
 https://www.youtube.com/watch?v=PlhNUD0Y4hg
 
+NOTE: We have also tried training this model in ATM22 (https://atm22.grand-challenge.org/). Airway segmentation is included, with also an argument (--atm_mode) to only segment the airway, using less memory. A short paper about this will be published in the near future.
+
 ## Citation
 * Carmo, Diedre, et al. "Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models." 17th International Symposium on Medical Information Processing and Analysis. Vol. 12088. SPIE, 2021.
 
@@ -22,7 +24,7 @@ https://www.youtube.com/watch?v=PlhNUD0Y4hg
 
 ## Requirements
 
-This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool installing it with Miniconda and pip.
+This tool was tested on Ubuntu 20.04 and Windows 10. The following instructions refer to quickly running the tool installing it with Miniconda and pip. Depending on the size of your input CT, you might need 32 GB of memory to run. I intend to reduce this memory requirement with future optimizations.
 
 ### ITKSnap
 
@@ -61,18 +63,16 @@ To run, just call it in a terminal.
 
     medseg
 
-If you don't want to use a GPU, run with the --cpu flag.
+If you don't want to use a GPU, run this command:
 
     medseg_cpu
 
-If your ITKSNap installation is not on the assumed default locations, you can change where the tool will look for it. Check the --help command for more details.
-
-    medseg --help
+If you don't want to use the GUI, give --input_folder and --output_folder arguments to run in a folder of exams. If your ITKSNap installation is not on the assumed default locations, you can change where the tool will look for it. Check the --help command for more details and help in general.
 
 ## How to train?
 
 This code is only intended to allow reproduction of the segmentation capabilities of our work. 
-However, we provide the complete Lightning Module code (in lightning_module.py) which can be used under your workflow and data for training if you use PyTorch Lightning.
+However, we provide the complete Lightning Module code (in seg_2d_module.py) which can be used under your workflow and data for training if you use PyTorch Lightning.
 
 ## Issues?
 

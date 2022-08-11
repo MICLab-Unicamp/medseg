@@ -264,7 +264,7 @@ class BiFPN(nn.Module):
         weight = p4_w2 / (torch.sum(p4_w2, dim=0) + self.epsilon)
         # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
         p4_out = self.conv4_down(
-            self.swish(weight[0] * p4_in + weight[1] * p4_up + weight[2] * self.p4_downsample(p3_out)))
+            self.swish(align_sum(weight[0] * p4_in + weight[1] * p4_up, weight[2] * self.p4_downsample(p3_out))))
 
         # Weights for P5_0, P5_1 and P4_2 to P5_2
         p5_w2 = self.p5_w2_relu(self.p5_w2)
@@ -509,10 +509,3 @@ class EfficientNet(nn.Module):
         del last_x
 
         return feature_maps[:-1]
-
-
-if __name__ == '__main__':
-    from tensorboardX import SummaryWriter
-
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)

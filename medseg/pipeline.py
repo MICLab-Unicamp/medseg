@@ -25,7 +25,7 @@ from medseg.utils import MultiViewer
 
 
 def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
-             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool, long: bool):
+             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool, long: bool, atm_mode: bool):
     if debug:
         pkg_path = 'medseg'
     else:
@@ -45,6 +45,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         model = SegmentationPipeline(best_3d=os.path.join(pkg_path, "poly_lung.ckpt"),
                                      best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt") if long else None,
                                      best_25d_raw=os.path.join(pkg_path, "raw_medseg_positive.ckpt"),
+                                     airway=os.path.join(pkg_path, "airway.ckpt"),
                                      batch_size=batch_size,
                                      cpu=cpu,
                                      n=None)  # uncertainty disabled for now
@@ -64,9 +65,13 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             # Use seg_pipeline here
             data, original_shape, origin, spacing, directions, original_image = read_preprocess(run)
             dir_array = np.asarray(directions)
-            _, ensemble_consensus, left_right_label, _, lung, covid, _, _, _, left_lung_volume, right_lung_volume = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
+            if atm_mode:
+                airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, atm_mode=atm_mode)
+            else:
+                _, ensemble_consensus, left_right_label, _, lung, covid, _, _, _, left_lung_volume, right_lung_volume, airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
             info_q.put(("iterbar", 90))
         else:
+            ################### DEPRECATED ##############################
             slice_dataset = SliceDataset(run)
             directions = slice_dataset.directions
             dir_array = np.asarray(directions)
@@ -108,71 +113,87 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             
             lung, covid = post_processing(cpu_output)
             info_q.put(("iterbar", 90))
+            ################### DEPRECATED ##############################
 
         # Statistics
-        lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
         if isinstance(run, list):
             ID = os.path.basename(os.path.dirname(run[0]))
         else:
             ID = os.path.basename(run).split(".")[0]
-        output_csv["ID"].append(ID)
-        output_csv["Occupation (%)"].append(lung_ocupation)
-        output_csv["Left Lung Volume (L)"].append(left_lung_volume)
-        output_csv["Right Lung Volume (L)"].append(right_lung_volume)
-        output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
-        voxvol = spacing[0]*spacing[1]*spacing[2]
-        left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
-        right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
-        output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
-        output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
-        output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
-        output_csv["Voxel volume (mm³)"].append(voxvol)
-        output_csv["Left Occupation (%)"] = round((left_f_v*100/1e+6)/left_lung_volume)
-        output_csv["Right Occupation (%)"] = round((right_f_v*100/1e+6)/right_lung_volume)
+        if not atm_mode:
+            lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
+            output_csv["ID"].append(ID)
+            output_csv["Occupation (%)"].append(lung_ocupation)
+            output_csv["Left Lung Volume (L)"].append(left_lung_volume)
+            output_csv["Right Lung Volume (L)"].append(right_lung_volume)
+            output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
+            voxvol = spacing[0]*spacing[1]*spacing[2]
+            left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
+            right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
+            output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
+            output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
+            output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
+            output_csv["Voxel volume (mm³)"].append(voxvol)
+            output_csv["Left Occupation (%)"] = round((left_f_v*100/1e+6)/left_lung_volume)
+            output_csv["Right Occupation (%)"] = round((right_f_v*100/1e+6)/right_lung_volume)
 
         # Undo flips
         if len(dir_array) == 9:
-            lung = np.flip(lung, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
-            covid = np.flip(covid, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
+            airway = np.flip(airway, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
+            if not atm_mode:
+                lung = np.flip(lung, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
+                covid = np.flip(covid, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
 
-        merged = lung + covid
+        if not atm_mode:
+            merged = lung + covid
+            merged[airway==1] = 3
         
         # Create save paths
         output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
         output_lung_path = os.path.join(output_path, ID + "_lung.nii.gz")
         output_findings_path = os.path.join(output_path, ID + "_findings.nii.gz")
-        output_merged_path = os.path.join(output_path, ID + "_lung_and_findings.nii.gz")
+        output_merged_path = os.path.join(output_path, ID + "_all_segmentations.nii.gz")
+        output_airway = os.path.join(output_path, ID + ".nii.gz")
 
         # Create images
         writer = sitk.ImageFileWriter()
 
-        # Save original image
-        writer.SetFileName(output_input_path)
-        writer.Execute(original_image)
-        
-        # Save lung image
-        lung_image = sitk.GetImageFromArray(lung)
-        lung_image.SetDirection(directions)
-        lung_image.SetOrigin(origin)
-        lung_image.SetSpacing(spacing)
-        writer.SetFileName(output_lung_path)
-        writer.Execute(lung_image)
+        # Save airway image
+        airway_image = sitk.GetImageFromArray(airway)
+        airway_image.SetDirection(directions)
+        airway_image.SetOrigin(origin)
+        airway_image.SetSpacing(spacing)
+        writer.SetFileName(output_airway)
+        writer.Execute(airway_image)
 
-        # Save findings image
-        covid_image = sitk.GetImageFromArray(covid)
-        covid_image.SetDirection(directions)
-        covid_image.SetOrigin(origin)
-        covid_image.SetSpacing(spacing)
-        writer.SetFileName(output_findings_path)
-        writer.Execute(covid_image)
+        if not atm_mode:
+            # Save original image
+            writer.SetFileName(output_input_path)
+            writer.Execute(original_image)
+            
+            # Save lung image
+            lung_image = sitk.GetImageFromArray(lung)
+            lung_image.SetDirection(directions)
+            lung_image.SetOrigin(origin)
+            lung_image.SetSpacing(spacing)
+            writer.SetFileName(output_lung_path)
+            writer.Execute(lung_image)
 
-        # Save lung and findings image
-        merged_image = sitk.GetImageFromArray(merged)
-        merged_image.SetDirection(directions)
-        merged_image.SetOrigin(origin)
-        merged_image.SetSpacing(spacing)
-        writer.SetFileName(output_merged_path)
-        writer.Execute(merged_image)
+            # Save findings image
+            covid_image = sitk.GetImageFromArray(covid)
+            covid_image.SetDirection(directions)
+            covid_image.SetOrigin(origin)
+            covid_image.SetSpacing(spacing)
+            writer.SetFileName(output_findings_path)
+            writer.Execute(covid_image)
+
+            # Save lung and findings image
+            merged_image = sitk.GetImageFromArray(merged)
+            merged_image.SetDirection(directions)
+            merged_image.SetOrigin(origin)
+            merged_image.SetSpacing(spacing)
+            writer.SetFileName(output_merged_path)
+            writer.Execute(merged_image)
 
         info_q.put(("iterbar", 100))
         info_q.put(("write", f"Processing finished {run}."))
@@ -181,10 +202,11 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             # ITKSnap
             info_q.put(("write", "Displaying results with itksnap.\nClose itksnap windows to continue."))
             try:
+                itksnap_output_path = output_airway if atm_mode else output_merged_path
                 if os.name == "nt":
-                    subprocess.Popen([windows_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
+                    subprocess.Popen([windows_itksnap_path, "-g", output_input_path, "-s", itksnap_output_path])
                 else:
-                    subprocess.Popen([linux_itksnap_path, "-g", output_input_path, "-s", output_merged_path])
+                    subprocess.Popen([linux_itksnap_path, "-g", output_input_path, "-s", itksnap_output_path])
                 
             except Exception as e:
                 info_q.put(("write", "Error displaying results. Do you have itksnap installed?"))
