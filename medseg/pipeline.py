@@ -156,6 +156,8 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         output_airway = os.path.join(output_path, ID + ".nii.gz")
 
         # Create images
+        # Reverting spacing back for saving
+        spacing = spacing[::-1]
         writer = sitk.ImageFileWriter()
 
         # Save airway image
