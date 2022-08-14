@@ -253,6 +253,9 @@ class MainWindow(threading.Thread):
         '''
         if self.cli:
             self.start_processing() 
+            if self.args.output_folder is not None:
+                os.makedirs(self.args.output_folder, exist_ok=True)
+                self.write_to_textbox(f"Results will be in the '{self.args.output_folder}' folder")
             self.pipeline.join()
         else:
             self.ws = Tk()
