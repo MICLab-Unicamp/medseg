@@ -23,7 +23,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
-    install_requires=['setuptools', 'numpy', 'rich', 'pillow', 'scipy', 'tqdm', 'torch', 'torchvision', 'pytorch-lightning', 'efficientnet_pytorch', 'connected-components-3d', 'psutil', 'gputil', 'SimpleITK==2.0.2'],
+    install_requires=['setuptools', 'numpy', 'rich', 'pillow', 'scipy', 'tqdm', 'torch', 'pandas', 'torchvision', 'pytorch-lightning', 'efficientnet_pytorch', 'connected-components-3d', 'psutil', 'gputil', 'opencv-python', 'SimpleITK==2.0.2', 'pydicom', 'matplotlib'],
     entry_points={
         'console_scripts': ["medseg = medseg.run:main", "medseg_cpu = medseg.run:main_cpu"]
     },

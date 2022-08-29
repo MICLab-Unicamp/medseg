@@ -119,7 +119,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         if isinstance(run, list):
             ID = os.path.basename(os.path.dirname(run[0]))
         else:
-            ID = os.path.basename(run).split(".")[0]
+            ID = os.path.basename(run).replace(".nii", '').replace(".gz", '')
         if not atm_mode:
             lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
             output_csv["ID"].append(ID)
@@ -153,7 +153,10 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         output_lung_path = os.path.join(output_path, ID + "_lung.nii.gz")
         output_findings_path = os.path.join(output_path, ID + "_findings.nii.gz")
         output_merged_path = os.path.join(output_path, ID + "_all_segmentations.nii.gz")
-        output_airway = os.path.join(output_path, ID + ".nii.gz")
+        if atm_mode:
+            output_airway = os.path.join(output_path, ID + ".nii.gz")
+        else:
+            output_airway = os.path.join(output_path, ID + "_airway.nii.gz")
 
         # Create images
         # Reverting spacing back for saving
