@@ -13,3 +13,5 @@ RUN apt-get install build-essential git python3-opencv -y
 # Release
 RUN git clone https://github.com/MICLab-Unicamp/medseg
 RUN pip install medseg/.
+
+RUN mv /workspace/medseg/predict.sh /workspace/predict.sh
