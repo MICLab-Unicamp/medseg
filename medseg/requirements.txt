@@ -7,8 +7,9 @@ torch
 pandas
 torchvision
 pytorch-lightning
-efficientnet_pytorch==0.7.0
+efficientnet_pytorch
 connected-components-3d
 psutil
 gputil
+opencv-python
 SimpleITK==2.0.2
