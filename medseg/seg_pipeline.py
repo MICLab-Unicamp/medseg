@@ -41,7 +41,7 @@ class SegmentationPipeline():
     def __init__(self,
                  best_3d="/home/diedre/diedre_phd/phd/models/wd_step_poly_lung_softm-epoch=85-val_loss=0.03.ckpt",  # POLY LUNG SOFTM
                  best_25d="/home/diedre/diedre_phd/phd/models/wd_step_sme2d_coedet_fiso-epoch=72-val_loss=0.06-bg_dice=1.00-healthy_dice=0.92-unhealthy_dice=0.74.ckpt",  # SME2D COEDET FISO Full train wd step  better
-                 best_25d_raw="/home/diedre/diedre_phd/phd/models/wd_step_raw_medseg_positive-epoch=27-val_loss=0.15-bg_dice=1.00-healthy_dice=0.84-unhealthy_dice=0.71.ckpt",  # Best raw axial 2.5D model, trained on positive 256 slices only
+                 best_25d_raw="/home/diedre/diedre_phd/phd/models/up_awd_step_raw_medseg_pos-epoch=58-val_loss=0.15-bg_dice=1.00-healthy_dice=0.84-unhealthy_dice=0.72.ckpt",  # Best raw axial 2.5D model, trained on positive 256 slices only
                  airway="/home/diedre/diedre_phd/phd/models/atm_baseline-epoch=75-val_loss=0.10-bg_dice=0.00-healthy_dice=0.00-unhealthy_dice=0.90.ckpt",
                  batch_size=4,
                  n=10,

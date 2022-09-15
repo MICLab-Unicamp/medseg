@@ -44,7 +44,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
     if new_pipeline:
         model = SegmentationPipeline(best_3d=os.path.join(pkg_path, "poly_lung.ckpt"),
                                      best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt") if long else None,
-                                     best_25d_raw=os.path.join(pkg_path, "raw_medseg_positive.ckpt"),
+                                     best_25d_raw=os.path.join(pkg_path, "up_awd_step_raw_medseg_pos.ckpt"),
                                      airway=os.path.join(pkg_path, "airway.ckpt"),
                                      batch_size=batch_size,
                                      cpu=cpu,
