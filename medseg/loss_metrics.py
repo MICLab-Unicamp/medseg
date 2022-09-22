@@ -22,8 +22,6 @@ class DICELoss(Loss):
         self.negative_loss = negative_loss
         self.per_channel = per_channel
 
-        print(f"DICE Loss initialized with volumetric={volumetric}, negative? {negative_loss}, per_channel {per_channel}")
-
     def __call__(self, probs, targets):
         '''
         probs: output of last convolution, sigmoided or not (use apply_sigmoid=True if not)
@@ -153,8 +151,6 @@ class DICEMetric(Metric):
         self.mask_ths = mask_ths
         self.skip_ths = skip_ths
         self.per_channel_metric = per_channel_metric
-        print(f"DICE Metric initialized with apply_sigmoid={apply_sigmoid}, mask_ths={mask_ths}, skip_ths={skip_ths}, "
-              f"per_channel={per_channel_metric}")
 
     def __call__(self, probs, target):
         '''
