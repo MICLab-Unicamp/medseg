@@ -24,8 +24,20 @@ from medseg.seg_pipeline import SegmentationPipeline
 from medseg.utils import MultiViewer
 
 
-def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: str, display: bool, info_q, cpu: bool, 
-             windows_itksnap_path: str, linux_itksnap_path: str, debug: bool, long: bool, atm_mode: bool):
+def pipeline(model_path: str, 
+             runlist: List[str], 
+             batch_size: int, 
+             output_path: str, 
+             display: bool, 
+             info_q, 
+             cpu: bool, 
+             windows_itksnap_path: str, 
+             linux_itksnap_path: str, 
+             debug: bool, 
+             long: bool, 
+             atm_mode: bool, 
+             act: bool,
+             use_path_as_ID: bool):
     if debug:
         pkg_path = 'medseg'
     else:
@@ -68,7 +80,7 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
             if atm_mode:
                 airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, atm_mode=atm_mode)
             else:
-                _, ensemble_consensus, left_right_label, _, lung, covid, _, _, _, left_lung_volume, right_lung_volume, airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False)
+                ensemble_consensus, left_right_label, lung, covid, _, _, _, left_lung_volume, right_lung_volume, airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, act=act)
             info_q.put(("iterbar", 90))
         else:
             ################### DEPRECATED ##############################
@@ -119,23 +131,31 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         if isinstance(run, list):
             ID = os.path.basename(os.path.dirname(run[0]))
         else:
-            ID = os.path.basename(run).replace(".nii", '').replace(".gz", '')
+            if use_path_as_ID:
+                ID = '_'.join(run.split(os.sep)[-1:-4:-1][::-1])
+            else:
+                ID = os.path.basename(run).replace(".nii", '').replace(".gz", '')
+
         if not atm_mode:
             lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
-            output_csv["ID"].append(ID)
-            output_csv["Occupation (%)"].append(lung_ocupation)
-            output_csv["Left Lung Volume (L)"].append(left_lung_volume)
-            output_csv["Right Lung Volume (L)"].append(right_lung_volume)
-            output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
             voxvol = spacing[0]*spacing[1]*spacing[2]
             left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
             right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
+            airway_volume = round(airway.sum()*voxvol/1e+6, 3)
+
+            output_csv["Path"].append(run)
+            output_csv["ID"].append(ID)
+            output_csv["Lung Volume (L)"].append(left_lung_volume + right_lung_volume)
+            output_csv["Left Lung Volume (L)"].append(left_lung_volume)
+            output_csv["Right Lung Volume (L)"].append(right_lung_volume)
+            output_csv["Airway Volume (L)"].append(airway_volume)
+            output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
             output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
             output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
-            output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
+            output_csv["Occupation (%)"].append(lung_ocupation)
+            output_csv["Left Occupation (%)"].append(round(left_f_v*100/left_lung_volume, 2))
+            output_csv["Right Occupation (%)"].append(round(right_f_v*100/right_lung_volume, 2))
             output_csv["Voxel volume (mm³)"].append(voxvol)
-            output_csv["Left Occupation (%)"] = round((left_f_v*100/1e+6)/left_lung_volume)
-            output_csv["Right Occupation (%)"] = round((right_f_v*100/1e+6)/right_lung_volume)
 
         # Undo flips
         if len(dir_array) == 9:
@@ -172,9 +192,9 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
         writer.Execute(airway_image)
 
         if not atm_mode:
-            # Save original image
-            writer.SetFileName(output_input_path)
-            writer.Execute(original_image)
+            # Save original image removed, too much space usage for big images
+            # writer.SetFileName(output_input_path)
+            # writer.Execute(original_image)
             
             # Save lung image
             lung_image = sitk.GetImageFromArray(lung)
@@ -217,9 +237,10 @@ def pipeline(model_path: str, runlist: List[str], batch_size: int, output_path: 
                 info_q.put(("write", "Error displaying results. Do you have itksnap installed?"))
                 print(e)
 
-            # Proprietary multiviewer
+        # Proprietary multiviewer
+        if act:    
             try:
-                multi_viewer = MultiViewer(np.concatenate((data.unsqueeze(0), ensemble_consensus)), left_right_label, window_name="Additional outputs (press numbers and S)", threaded=False, cube_side=256)
+                multi_viewer = MultiViewer(np.concatenate((data.unsqueeze(0), ensemble_consensus)), left_right_label, window_name="Activations visualization (press numbers and S to navigate)", threaded=False, cube_side=256)
                 multi_viewer.display(channel_select=0)
                 cv.destroyAllWindows()
             except Exception as e:

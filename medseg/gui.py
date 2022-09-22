@@ -80,20 +80,14 @@ class MainWindow(threading.Thread):
             self.input_path = self.args.input_folder
             self.display = DummyTkIntVar(value=0)
             self.long = DummyTkIntVar(value=0)
+            self.act = DummyTkIntVar(value=0)
             self.general_progress = {}
             self.iter_progress = {}
             self.cli_populate_runlist()
 
         self.start()
         
-    def start_processing(self):
-        '''
-        Keep loop ready to receive strings and bar increase information from outside (infoq)
-        '''
-        if self.runlist is None:
-            self.write_to_textbox("\nPlease load a folder or image before starting processing.\n")
-            return
-        
+    def output_selection(self):
         if self.args.output_folder is None:
             alert_dialog("Double click (enter) the folder where you want to save the segmentation output.")
             output_folder = None
@@ -103,11 +97,24 @@ class MainWindow(threading.Thread):
         else:
             output_folder = self.args.output_folder
 
+        self.output_folder = output_folder
+
+        self.write_to_textbox("\nClick start processing to start.")
+    
+    def start_processing(self):
+        '''
+        Keep loop ready to receive strings and bar increase information from outside (infoq)
+        '''
+        if self.runlist is None:
+            self.write_to_textbox("\nPlease load a folder or image before starting processing.\n")
+            return
+        
         # Separate thread for heavy processing. Threads for using less ram. Multiprocessing might be faster.
+        # This shares computation with MainWindow GUI thread, however the overhead of GUI is hopefully worth using less RAM
         self.pipeline = threading.Thread(target=pipeline, args=(self.args.model_path, 
                                                                 self.runlist, 
                                                                 self.args.batch_size, 
-                                                                output_folder,
+                                                                self.output_folder,
                                                                 bool(self.display.get()),
                                                                 self.info_q,
                                                                 self.args.cpu,
@@ -115,7 +122,9 @@ class MainWindow(threading.Thread):
                                                                 self.args.linux_itk_path,
                                                                 self.args.debug,
                                                                 bool(self.long.get()),
-                                                                self.args.atm_mode))                                                          
+                                                                self.args.atm_mode,
+                                                                bool(self.act.get()),
+                                                                self.args.use_path_as_ID))
         self.pipeline_comms_thread = threading.Thread(target=self.pipeline_comms)                                                                
         self.pipeline_comms_thread.start()
         self.pipeline.start()
@@ -177,7 +186,7 @@ class MainWindow(threading.Thread):
                         alert_dialog("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
             else:
                 self.runlist = [self.input_path]
-            self.write_to_textbox(f"Runlist: {self.runlist}.\n{len(self.runlist)} volumes detected.\nClick start processing to start.")
+            self.write_to_textbox(f"Runlist: {self.runlist}.\n{len(self.runlist)} volumes detected.")
         else:
             alert_dialog("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
 
@@ -185,6 +194,16 @@ class MainWindow(threading.Thread):
 
         if self.input_path is None:
             pass
+        elif os.path.isfile(self.input_path) and self.input_path.split('.')[-1] == 'txt':
+                print("Detected .txt file, attempting to parse...")
+                try:
+                    self.runlist = []
+                    with open(self.input_path, 'r') as text_input_file:
+                        for line in text_input_file:
+                            self.runlist.append(line.strip())
+                except Exception as e:
+                    print(f"Error trying to parse .txt input file: {e}, attempting to use input path as single input.")
+                    self.runlist = [self.input_path]   
         elif os.path.exists(self.input_path) and (".nii" in self.input_path or os.path.isdir(self.input_path) or ".dcm" in self.input_path):
             if os.path.isdir(self.input_path):
                 print(f"Searching {self.input_path} for files...")
@@ -197,10 +216,10 @@ class MainWindow(threading.Thread):
                         print(f"Found {dcms} DCM inside folder {self.input_path}.")
                         self.runlist = [self.runlist]
                     else:
-                        raise ValueError("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
+                        raise ValueError("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.") 
             else:
                 self.runlist = [self.input_path]
-            print(f"Runlist: {self.runlist}.\n{len(self.runlist)} volumes detected.\nClick start processing to start.")
+            print(f"Runlist: {self.runlist}.\n{len(self.runlist)} volumes detected.")
         else:
             ValueError("No valid volume or folder given, please give a nift volume, dcm volume, dcm series folder or folder with NifTs.")
     
@@ -214,11 +233,13 @@ class MainWindow(threading.Thread):
     def load_file(self):
         self.input_path = file_dialog(dir=False)
         self.populate_runlist()
+        self.output_selection()
     
     def load_folder(self):
         alert_dialog("Double click (enter) the directory with the input files.")
         self.input_path = file_dialog(dir=True)
         self.populate_runlist()
+        self.output_selection()
     
     def on_closing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
@@ -252,10 +273,11 @@ class MainWindow(threading.Thread):
             - Run in thread
         '''
         if self.cli:
-            self.start_processing() 
             if self.args.output_folder is not None:
                 os.makedirs(self.args.output_folder, exist_ok=True)
                 self.write_to_textbox(f"Results will be in the '{self.args.output_folder}' folder")
+            self.output_folder = self.args.output_folder
+            self.start_processing() 
             self.pipeline.join()
         else:
             self.ws = Tk()
@@ -323,6 +345,11 @@ class MainWindow(threading.Thread):
             c2 = tk.Checkbutton(self.ws, text='Long prediction', variable=self.long, onvalue=1, offvalue=0, state='active')
             c2.config(font=("Sans", "14"))
             c2.pack(side='left')
+
+            self.act = tk.IntVar(value=0)
+            c3 = tk.Checkbutton(self.ws, text='Show activations', variable=self.act, onvalue=1, offvalue=0, state='active')
+            c3.config(font=("Sans", "14"))
+            c3.pack(side='left')
 
             boldStyle = Style ()
             boldStyle.configure("Bold.TButton", font = ('Sans','10','bold'))

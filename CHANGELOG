@@ -1,0 +1,8 @@
+v2.4
+
+* Better input/output flow, option to use less memory by not showing activations
+* Option to give a file with input paths separated by newlines for bulk runs.
+
+v2.3
+
+* Run without GUI using CLI arguments (check --help), including an atm_mode which only computes the airway.

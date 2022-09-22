@@ -62,7 +62,7 @@ class SegmentationPipeline():
                                                  '' if self.model_25d is None else self.model_25d.hparams.experiment_name,
                                                  self.model_25d_raw.hparams.experiment_name])
 
-    def __call__(self, input_volume, spacing, tqdm_iter, minimum_return=False, atm_mode=False):
+    def __call__(self, input_volume, spacing, tqdm_iter, minimum_return=False, atm_mode=False, act=False):
         assert input_volume.max() <= 1.0 and input_volume.min() >= 0.0
         
         if tqdm_iter is not None and not isinstance(tqdm_iter, tqdm):
@@ -82,16 +82,15 @@ class SegmentationPipeline():
                 self.model_3d = self.model_3d.to(self.device)
                 input_volume = input_volume.to(self.device)
                 pre_shape = input_volume.shape[2:]
-                transformed_input = F.interpolate(input_volume, (128, 256, 256), mode="trilinear")
-                output = self.model_3d(transformed_input, get_bg=True)[0]
+                left_right_label = self.model_3d(F.interpolate(input_volume, (128, 256, 256), mode="trilinear"), get_bg=True)[0]
                 self.model_3d.cpu()
                 input_volume = input_volume.cpu()
-                output = F.interpolate(output, pre_shape, mode="nearest").squeeze().cpu().numpy()
+                left_right_label = F.interpolate(left_right_label, pre_shape, mode="nearest").squeeze().cpu().numpy()
                 
-                left_lung, right_lung = output[1], output[2]
+                left_lung, right_lung = left_right_label[1], left_right_label[2]
                 voxvol = spacing[0]*spacing[1]*spacing[2]
-                left_lung_volume = round((left_lung.sum()*voxvol)/1e+6, 2)
-                right_lung_volume = round((right_lung.sum()*voxvol)/1e+6, 2)
+                left_lung_volume = round((left_lung.sum()*voxvol)/1e+6, 3)
+                right_lung_volume = round((right_lung.sum()*voxvol)/1e+6, 3)
                 lung_volume = left_lung_volume + right_lung_volume
 
                 tqdm_iter.write(f"Lung volume: {lung_volume}L, left: {left_lung_volume}L, right: {right_lung_volume}L")
@@ -99,7 +98,7 @@ class SegmentationPipeline():
                 if lung_volume < 1:
                     # Lung not detected!
                     tqdm_iter.write("ERROR: Lung doesn't seen to be present in image! Aborting.")
-                    output_f = output_f_sm_consensus = np.zeros_like(output)
+                    output_f = output_f_sm_consensus = np.zeros_like(left_right_label)
                 else:
                     # Lung detected
                     if self.n is not None:
@@ -114,7 +113,7 @@ class SegmentationPipeline():
                     tqdm_iter.progress(30)
                         
                     # 2.5D RAW
-                    tqdm_iter.write("2.5D Raw prediction...")
+                    tqdm_iter.write("2.5D prediction...")
                     tqdm_iter.progress(40)
                     if self.n is None:
                         output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
@@ -142,27 +141,28 @@ class SegmentationPipeline():
                                         input_iso.permute(0, 1, 3, 2, 4), 
                                         input_iso.permute(0, 1, 4, 2, 3)]
                         
-                        output_f_iso = multi_view_consensus([self.model_25d for _ in range(3)],
-                                                            orientations=orientations,
-                                                            tqdm_iter=None,
-                                                            batch_size=self.batch_size,
-                                                            extended_2d=1,
-                                                            device=self.device,
-                                                            info_q=tqdm_iter)
+                        output_f_sm_consensus = multi_view_consensus([self.model_25d for _ in range(3)],
+                                                                      orientations=orientations,
+                                                                      tqdm_iter=None,
+                                                                      batch_size=self.batch_size,
+                                                                      extended_2d=1,
+                                                                      device=self.device,
+                                                                      info_q=tqdm_iter)
                         tqdm_iter.icon()
 
-                        output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_iso).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
+                        output_f_sm_consensus = F.interpolate(torch.from_numpy(output_f_sm_consensus).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
                     else:
                         tqdm_iter.write("Skipping 2.5D single model isometric consensus prediction due to long prediction button unchecked...")
                         tqdm_iter.progress(60)
                         tqdm_iter.icon()
                         output_f_sm_consensus = output_f
+                    del input_volume
         
         airway = get_connected_components((output_a > 0.5).astype(np.int32), return_largest=1)[0].astype(np.int16)  # same type as atm mask
         tqdm_iter.write("Post-processing...")
         tqdm_iter.progress(80)
         if not atm_mode:
-            output_logits = {"3d_bg": output[0],
+            output_logits = {"3d_bg": left_right_label[0],
                             "3d_left_lung": left_lung,
                             "3d_right_lung": right_lung,
                             "3d_lung": left_lung + right_lung,
@@ -180,17 +180,21 @@ class SegmentationPipeline():
             for k, v in output_logits.items():
                 print(k, v.shape)
 
-            output_logits["bg_ensemble"] = (output_logits["3d_bg"] + output_logits["25d_bg"] + output_logits["sm25d_bg"])/3
-            output_logits["lung_ensemble"] = (output_logits["3d_lung"] + output_logits["25d_lung"] + output_logits["sm25d_lung"])/3
-            output_logits["findings_ensemble"] = (output_logits["25d_findings"] + output_logits["sm25d_findings"])/2
+            # Build lung and findings consensus
+            findings = (output_logits["25d_findings"] + output_logits["sm25d_findings"])/2
+            lung = (output_logits["3d_lung"] + output_logits["25d_lung"] + output_logits["sm25d_lung"])/3 + findings
             
-            ensemble_consensus = np.zeros((3,) + pre_shape)
-            ensemble_consensus[0] = output_logits["bg_ensemble"]
-            ensemble_consensus[1] = output_logits["lung_ensemble"]
-            ensemble_consensus[2] = output_logits["findings_ensemble"]
+            # If return of activations requested
+            if act:
+                ensemble_consensus = np.zeros((3,) + pre_shape)
+                ensemble_consensus[0] = (output_logits["3d_bg"] + output_logits["25d_bg"] + output_logits["sm25d_bg"])/3  # bg
+                ensemble_consensus[1] = lung - findings  # healthy
+                ensemble_consensus[2] = findings  # unhealthy
+            else: 
+                ensemble_consensus = None
+            del output_logits
 
-            lung = ensemble_consensus[1] + ensemble_consensus[2]
-            findings = ensemble_consensus[2]
+            # Binarize
             lung, findings = (lung > 0.5).astype(np.int32), (findings > 0.5).astype(np.int32)
             lung, _, _ = get_connected_components(lung, return_largest=2)
             lung = lung.astype(np.uint8)
@@ -205,12 +209,14 @@ class SegmentationPipeline():
                 epistemic_uncertainties, mean_predictions = None, None
 
             inverse_lung = np.ones_like(lung) - lung
-            ensemble_consensus[0] = ensemble_consensus[0] * inverse_lung
-            ensemble_consensus[1] = ensemble_consensus[1] * lung
-            ensemble_consensus[2] = ensemble_consensus[2] * lung
+            if act:
+                ensemble_consensus[0] = ensemble_consensus[0] * inverse_lung
+                ensemble_consensus[1] = ensemble_consensus[1] * lung
+                ensemble_consensus[2] = ensemble_consensus[2] * lung
 
-            ensemble_consensus_label = ensemble_consensus.argmax(axis=0).astype(np.uint8) # save memory with uint8
-            left_right_label = output.argmax(axis=0).astype(np.uint8)
+            # Removed to save RAM
+            # ensemble_consensus_label = ensemble_consensus.argmax(axis=0).astype(np.uint8) # save memory with uint8
+            left_right_label = left_right_label.argmax(axis=0).astype(np.uint8)
 
         torch.cuda.empty_cache()
         if atm_mode:
@@ -218,7 +224,7 @@ class SegmentationPipeline():
         elif minimum_return:
             return ensemble_consensus
         else:
-            return ensemble_consensus_label, ensemble_consensus, left_right_label, output, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume, airway 
+            return ensemble_consensus, left_right_label, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume, airway 
 
 
 def get_atts_work(encoder, pre_shape):
