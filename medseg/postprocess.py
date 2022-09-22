@@ -36,8 +36,11 @@ def get_connected_components(volume, return_largest=2, verbose=False):
                 # We want more components that what is in the image, stop
                 break
 
-        volume = filtered * volume
-        labels_out = filtered * labels_out
+        if filtered is None:
+            print("WARNING: Couldn find largest connected labels of lung.")
+        else:
+            volume = filtered * volume
+            labels_out = filtered * labels_out
 
     return volume, label_count, labels_out
 

@@ -84,6 +84,7 @@ def pipeline(model_path: str,
             info_q.put(("iterbar", 90))
         else:
             ################### DEPRECATED ##############################
+            raise DeprecationWarning
             slice_dataset = SliceDataset(run)
             directions = slice_dataset.directions
             dir_array = np.asarray(directions)
@@ -132,16 +133,43 @@ def pipeline(model_path: str,
             ID = os.path.basename(os.path.dirname(run[0]))
         else:
             if use_path_as_ID:
-                ID = '_'.join(run.split(os.sep)[-1:-4:-1][::-1])
+                ID = '_'.join(run.replace(".nii", '').replace(".gz", '').split(os.sep)[-1:-4:-1][::-1])
             else:
                 ID = os.path.basename(run).replace(".nii", '').replace(".gz", '')
 
         if not atm_mode:
-            lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
             voxvol = spacing[0]*spacing[1]*spacing[2]
-            left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
-            right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
             airway_volume = round(airway.sum()*voxvol/1e+6, 3)
+
+            try:
+                lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
+            except:
+                lung_ocupation = None
+            
+            try:
+                left_f_v = round((covid*(left_right_label == 1)).sum()*voxvol/1e+6, 3)
+            except:
+                left_f_v = None
+            
+            try:
+                right_f_v = round((covid*(left_right_label == 2)).sum()*voxvol/1e+6, 3)
+            except:
+                right_f_v = None
+
+            try:
+                f_v = round(covid.sum()*voxvol/1e+6, 3)
+            except:
+                f_v = None
+
+            try:
+                l_o = round(left_f_v*100/left_lung_volume, 2)
+            except:
+                l_o = None
+
+            try:
+                r_o = round(right_f_v*100/right_lung_volume, 2)
+            except:
+                r_o = None
 
             output_csv["Path"].append(run)
             output_csv["ID"].append(ID)
@@ -149,12 +177,12 @@ def pipeline(model_path: str,
             output_csv["Left Lung Volume (L)"].append(left_lung_volume)
             output_csv["Right Lung Volume (L)"].append(right_lung_volume)
             output_csv["Airway Volume (L)"].append(airway_volume)
-            output_csv["Lung Findings Volume (L)"].append(round(covid.sum()*voxvol/1e+6, 3))
+            output_csv["Lung Findings Volume (L)"].append(f_v)
             output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
             output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
             output_csv["Occupation (%)"].append(lung_ocupation)
-            output_csv["Left Occupation (%)"].append(round(left_f_v*100/left_lung_volume, 2))
-            output_csv["Right Occupation (%)"].append(round(right_f_v*100/right_lung_volume, 2))
+            output_csv["Left Occupation (%)"].append(l_o)
+            output_csv["Right Occupation (%)"].append(r_o)
             output_csv["Voxel volume (mm³)"].append(voxvol)
 
         # Undo flips

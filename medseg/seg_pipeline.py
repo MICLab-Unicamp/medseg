@@ -3,6 +3,7 @@ Loads the best trainings to create the definitive lung segmentation pipeline
 
 build nice pipeline involving all three weights above.
 '''
+from queue import Empty
 import uuid
 import torch
 import numpy as np
@@ -95,10 +96,10 @@ class SegmentationPipeline():
 
                 tqdm_iter.write(f"Lung volume: {lung_volume}L, left: {left_lung_volume}L, right: {right_lung_volume}L")
                 
-                if lung_volume < 1:
+                if lung_volume < .5:
                     # Lung not detected!
                     tqdm_iter.write("ERROR: Lung doesn't seen to be present in image! Aborting.")
-                    output_f = output_f_sm_consensus = np.zeros_like(left_right_label)
+                    output_f = output_f_sm_consensus = atts = None
                 else:
                     # Lung detected
                     if self.n is not None:
@@ -155,44 +156,51 @@ class SegmentationPipeline():
                         tqdm_iter.write("Skipping 2.5D single model isometric consensus prediction due to long prediction button unchecked...")
                         tqdm_iter.progress(60)
                         tqdm_iter.icon()
-                        output_f_sm_consensus = output_f
+                        output_f_sm_consensus = None
                     del input_volume
         
+        print(f"Airway max activation {output_a.max()}")
         airway = get_connected_components((output_a > 0.5).astype(np.int32), return_largest=1)[0].astype(np.int16)  # same type as atm mask
+        print(f"Final airway max activation {airway.max()}")
         tqdm_iter.write("Post-processing...")
         tqdm_iter.progress(80)
         if not atm_mode:
-            output_logits = {"3d_bg": left_right_label[0],
-                            "3d_left_lung": left_lung,
-                            "3d_right_lung": right_lung,
-                            "3d_lung": left_lung + right_lung,
-
-                            "25d_bg": output_f[0],
-                            "25d_lung": output_f[1],
-                            "25d_findings": output_f[2],
-
-                            "sm25d_bg": output_f_sm_consensus[0],
-                            "sm25d_lung": output_f_sm_consensus[1],
-                            "sm25d_findings": output_f_sm_consensus[2],
-                            
-                            "airway": output_a}
-
-            for k, v in output_logits.items():
-                print(k, v.shape)
-
             # Build lung and findings consensus
-            findings = (output_logits["25d_findings"] + output_logits["sm25d_findings"])/2
-            lung = (output_logits["3d_lung"] + output_logits["25d_lung"] + output_logits["sm25d_lung"])/3 + findings
+            lung = left_lung + right_lung
+            print(f"Lung max activation: {lung.max()}")
+            if output_f is not None:         
+                print("Adding lung segmentation from 2.5D")           
+                lung += output_f[1] + output_f[2]
+                print(f"Lung max activation: {lung.max()}")
+                if output_f_sm_consensus is not None:
+                    print("Adding lung segmentation from SMC 2.5D")
+                    lung += output_f_sm_consensus[1] + output_f_sm_consensus[2]
+                    print(f"Lung max activation: {lung.max()}")
+                    lung = lung/3
+                else:
+                    lung = lung/2
+                print(f"Lung max activation after consensus: {lung.max()}")
+            
+            findings = np.zeros_like(lung)
+            if output_f is not None:
+                print("Adding findings from 2.5D")
+                findings = output_f[2]            
+                print(f"Findings max activation {findings.max()}")
+                if output_f_sm_consensus is not None:
+                    print("Adding findings from SMC 2.5D")
+                    findings += output_f_sm_consensus[2]
+                    print(f"Findings max activation {findings.max()}")
+                    findings = findings/2
+                    print(f"Findings max activation after consensus: {findings.max()}")
             
             # If return of activations requested
             if act:
                 ensemble_consensus = np.zeros((3,) + pre_shape)
-                ensemble_consensus[0] = (output_logits["3d_bg"] + output_logits["25d_bg"] + output_logits["sm25d_bg"])/3  # bg
+                ensemble_consensus[0] = (left_right_label[0] + output_f[0] + output_f_sm_consensus[0])/3  # bg
                 ensemble_consensus[1] = lung - findings  # healthy
                 ensemble_consensus[2] = findings  # unhealthy
             else: 
                 ensemble_consensus = None
-            del output_logits
 
             # Binarize
             lung, findings = (lung > 0.5).astype(np.int32), (findings > 0.5).astype(np.int32)
@@ -214,10 +222,8 @@ class SegmentationPipeline():
                 ensemble_consensus[1] = ensemble_consensus[1] * lung
                 ensemble_consensus[2] = ensemble_consensus[2] * lung
 
-            # Removed to save RAM
-            # ensemble_consensus_label = ensemble_consensus.argmax(axis=0).astype(np.uint8) # save memory with uint8
             left_right_label = left_right_label.argmax(axis=0).astype(np.uint8)
-
+            print(f"Final lung max: {lung.max()}, findings max: {findings.max()}")
         torch.cuda.empty_cache()
         if atm_mode:
             return airway
