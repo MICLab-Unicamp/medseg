@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from torch.optim.lr_scheduler import StepLR
 
 from medseg.utils import check_params
-from medseg.loss_metrics import DICELoss, CoUNet3D_metrics
+from medseg.utils import DICELoss, CoUNet3D_metrics
 from medseg.architecture import MEDSeg
 from medseg.radam import get_optimizer
 

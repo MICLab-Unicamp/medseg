@@ -334,8 +334,6 @@ class DICELoss(torch.nn.Module):
         self.per_channel = per_channel
         self.check_bounds = check_bounds
 
-        print(f"DICE Loss initialized with volumetric={volumetric}, negative? {negative_loss}, per_channel {per_channel}")
-
     def __call__(self, probs, targets):
         '''
         probs: output of last convolution, sigmoided or not (use apply_sigmoid=True if not)
@@ -446,8 +444,6 @@ class DICEMetric(nn.Module):
         self.skip_ths = skip_ths
         self.per_channel_metric = per_channel_metric
         self.check_bounds = check_bounds
-        print(f"DICE Metric initialized with apply_sigmoid={apply_sigmoid}, mask_ths={mask_ths}, skip_ths={skip_ths}, "
-              f"per_channel={per_channel_metric}")
 
     def __call__(self, probs, target):
         '''
@@ -503,3 +499,18 @@ def itk_snap_spawner(nparray: np.ndarray, title: str = "ITKSnap", itksnap_path: 
     image_viewer.Execute(sitk.GetImageFromArray(adjusted_nparray))
     if block:
         monitor_itksnap()
+
+
+class CoUNet3D_metrics():
+    def __init__(self, classes=["P", "L"]):
+        self.dice = DICEMetric(per_channel_metric=True)
+        self.classes = classes
+
+    def __call__(self, preds, tgt):
+        dices = self.dice(preds, tgt)
+        report = {}
+
+        for i, c in enumerate(self.classes):
+            report[f"{c}_dice"] = dices[i]
+
+        return report

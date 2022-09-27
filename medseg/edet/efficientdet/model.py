@@ -63,7 +63,7 @@ def align_sum(to_be_summed, upsample, align=True):
         diffX = to_be_summed.size()[2] - upsample.size()[2]
         diffY = to_be_summed.size()[3] - upsample.size()[3]
         upsample = torch.nn.functional.pad(upsample, (diffY // 2, diffY - diffY // 2, diffX // 2, diffX - diffX // 2))
-
+    
     return to_be_summed + upsample
 
 
@@ -201,6 +201,11 @@ class BiFPN(nn.Module):
         # if same, pass;
         # elif earlier phase, downsample to target phase's by pooling
         # elif later phase, upsample to target phase's by nearest interpolation
+        shape = inputs[0].shape[2:4]
+        if shape[0] % 2 == 0 or shape[1] % 2 == 0:
+            self.align = True
+        else:
+            self.align = False
 
         if self.attention:
             p3_out, p4_out, p5_out, p6_out, p7_out = self._forward_fast_attention(
@@ -232,28 +237,28 @@ class BiFPN(nn.Module):
         weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
         # Connections for P6_0 and P7_0 to P6_1 respectively
         p6_up = self.conv6_up(self.swish(align_sum(
-            weight[0] * p6_in, weight[1] * self.p6_upsample(p7_in))))
+            weight[0] * p6_in, weight[1] * self.p6_upsample(p7_in), align=self.align)))
 
         # Weights for P5_0 and P6_1 to P5_1
         p5_w1 = self.p5_w1_relu(self.p5_w1)
         weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
         # Connections for P5_0 and P6_0 to P5_1 respectively
         p5_up = self.conv5_up(self.swish(align_sum(
-            weight[0] * p5_in, weight[1] * self.p5_upsample(p6_up))))
+            weight[0] * p5_in, weight[1] * self.p5_upsample(p6_up), align=self.align)))
 
         # Weights for P4_0 and P5_1 to P4_1
         p4_w1 = self.p4_w1_relu(self.p4_w1)
         weight = p4_w1 / (torch.sum(p4_w1, dim=0) + self.epsilon)
         # Connections for P4_0 and P5_0 to P4_1 respectively
         p4_up = self.conv4_up(self.swish(align_sum(
-            weight[0] * p4_in, weight[1] * self.p4_upsample(p5_up))))
+            weight[0] * p4_in, weight[1] * self.p4_upsample(p5_up), align=self.align)))
 
         # Weights for P3_0 and P4_1 to P3_2
         p3_w1 = self.p3_w1_relu(self.p3_w1)
         weight = p3_w1 / (torch.sum(p3_w1, dim=0) + self.epsilon)
         # Connections for P3_0 and P4_1 to P3_2 respectively
         p3_out = self.conv3_up(self.swish(align_sum(
-            weight[0] * p3_in, weight[1] * self.p3_upsample(p4_up))))
+            weight[0] * p3_in, weight[1] * self.p3_upsample(p4_up), align=self.align)))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -264,7 +269,7 @@ class BiFPN(nn.Module):
         weight = p4_w2 / (torch.sum(p4_w2, dim=0) + self.epsilon)
         # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
         p4_out = self.conv4_down(
-            self.swish(align_sum(weight[0] * p4_in + weight[1] * p4_up, weight[2] * self.p4_downsample(p3_out))))
+            self.swish(align_sum(weight[0] * p4_in + weight[1] * p4_up, weight[2] * self.p4_downsample(p3_out), align=self.align)))
 
         # Weights for P5_0, P5_1 and P4_2 to P5_2
         p5_w2 = self.p5_w2_relu(self.p5_w2)
@@ -307,16 +312,16 @@ class BiFPN(nn.Module):
         # P7_0 to P7_2
 
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(align_sum(p6_in, self.p6_upsample(p7_in))))
+        p6_up = self.conv6_up(self.swish(align_sum(p6_in, self.p6_upsample(p7_in), align=self.align)))
 
         # Connections for P5_0 and P6_1 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(align_sum(p5_in, self.p5_upsample(p6_up))))
+        p5_up = self.conv5_up(self.swish(align_sum(p5_in, self.p5_upsample(p6_up), align=self.align)))
 
         # Connections for P4_0 and P5_1 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(align_sum(p4_in, self.p4_upsample(p5_up))))
+        p4_up = self.conv4_up(self.swish(align_sum(p4_in, self.p4_upsample(p5_up), align=self.align)))
 
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(align_sum(p3_in, self.p3_upsample(p4_up))))
+        p3_out = self.conv3_up(self.swish(align_sum(p3_in, self.p3_upsample(p4_up), align=self.align)))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -509,3 +514,10 @@ class EfficientNet(nn.Module):
         del last_x
 
         return feature_maps[:-1]
+
+
+if __name__ == '__main__':
+    from tensorboardX import SummaryWriter
+
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)

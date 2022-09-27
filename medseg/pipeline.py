@@ -199,6 +199,7 @@ def pipeline(model_path: str,
         # Create save paths
         output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
         output_lung_path = os.path.join(output_path, ID + "_lung.nii.gz")
+        output_lr_lung_path = os.path.join(output_path, ID + "_lr_lung.nii.gz")
         output_findings_path = os.path.join(output_path, ID + "_findings.nii.gz")
         output_merged_path = os.path.join(output_path, ID + "_all_segmentations.nii.gz")
         if atm_mode:
@@ -231,6 +232,14 @@ def pipeline(model_path: str,
             lung_image.SetSpacing(spacing)
             writer.SetFileName(output_lung_path)
             writer.Execute(lung_image)
+
+            # Save lr lung image
+            lr_lung_image = sitk.GetImageFromArray(left_right_label)
+            lr_lung_image.SetDirection(directions)
+            lr_lung_image.SetOrigin(origin)
+            lr_lung_image.SetSpacing(spacing)
+            writer.SetFileName(output_lr_lung_path)
+            writer.Execute(lr_lung_image)
 
             # Save findings image
             covid_image = sitk.GetImageFromArray(covid)
