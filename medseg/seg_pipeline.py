@@ -73,8 +73,21 @@ class SegmentationPipeline():
             # Airway segmentation
             tqdm_iter.write("Airway segmentation with ATM model...")
             tqdm_iter.progress(10)
-            output_a = stack_predict(self.airway_model.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=None, device=self.device, info_q=tqdm_iter).squeeze()
+            pre_shape = input_volume.shape[2:]
+            if pre_shape[1] != 512 or pre_shape[2] != 512:
+                adjust_shape = (pre_shape[0], 512, 512)
+                tqdm_iter.write(f"Unusual shape {pre_shape} being transformed to {adjust_shape}")
+                adjusted_volume = F.interpolate(input_volume.to(self.device), adjust_shape, mode="trilinear")
+                adjusted_volume = adjusted_volume.cpu()
+            else:
+                adjust_shape = None
+                adjusted_volume = input_volume
+            output_a = stack_predict(self.airway_model.to(self.device), adjusted_volume, self.batch_size, extended_2d=1, get_uncertainty=None, device=self.device, info_q=tqdm_iter).squeeze()
             self.airway_model.cpu()
+            if adjust_shape is not None:
+                a_shape = output_a.shape
+                tqdm_iter.write(f"Airway output {a_shape} being transformed back to {pre_shape}")
+                output_a = F.interpolate(torch.from_numpy(output_a).unsqueeze(0).unsqueeze(0).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
 
             if not atm_mode:
                 # 3D Lung detection
@@ -82,7 +95,6 @@ class SegmentationPipeline():
                 tqdm_iter.progress(20)
                 self.model_3d = self.model_3d.to(self.device)
                 input_volume = input_volume.to(self.device)
-                pre_shape = input_volume.shape[2:]
                 left_right_label = self.model_3d(F.interpolate(input_volume, (128, 256, 256), mode="trilinear"), get_bg=True)[0]
                 self.model_3d.cpu()
                 input_volume = input_volume.cpu()
@@ -117,11 +129,15 @@ class SegmentationPipeline():
                     tqdm_iter.write("2.5D prediction...")
                     tqdm_iter.progress(40)
                     if self.n is None:
-                        output_f = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
+                        output_f = stack_predict(self.model_25d_raw.to(self.device), adjusted_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)[0]
                     else:
-                        output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), input_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)
+                        output_f, epistemic_uncertainties, mean_predictions = stack_predict(self.model_25d_raw.to(self.device), adjusted_volume, self.batch_size, extended_2d=1, get_uncertainty=self.n, device=self.device, info_q=tqdm_iter)
                     self.model_25d_raw.cpu()
-                    input_volume = input_volume.cpu()
+                    adjusted_volume = adjusted_volume.cpu()
+                    if adjust_shape is not None:
+                        f_shape = output_f.shape[1:]
+                        tqdm_iter.write(f"2.5D Findings output {f_shape} being transformed back to {pre_shape}")
+                        output_f = F.interpolate(torch.from_numpy(output_f).unsqueeze(0).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
                     
                     if self.model_25d is not None:
                         # Isometric single model 2.5D consensus

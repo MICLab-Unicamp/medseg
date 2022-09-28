@@ -197,7 +197,7 @@ def pipeline(model_path: str,
             merged[airway==1] = 3
         
         # Create save paths
-        output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
+        # output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
         output_lung_path = os.path.join(output_path, ID + "_lung.nii.gz")
         output_lr_lung_path = os.path.join(output_path, ID + "_lr_lung.nii.gz")
         output_findings_path = os.path.join(output_path, ID + "_findings.nii.gz")
@@ -266,9 +266,9 @@ def pipeline(model_path: str,
             try:
                 itksnap_output_path = output_airway if atm_mode else output_merged_path
                 if os.name == "nt":
-                    subprocess.Popen([windows_itksnap_path, "-g", output_input_path, "-s", itksnap_output_path])
+                    subprocess.Popen([windows_itksnap_path, "-g", run, "-s", itksnap_output_path])
                 else:
-                    subprocess.Popen([linux_itksnap_path, "-g", output_input_path, "-s", itksnap_output_path])
+                    subprocess.Popen([linux_itksnap_path, "-g", run, "-s", itksnap_output_path])
                 
             except Exception as e:
                 info_q.put(("write", "Error displaying results. Do you have itksnap installed?"))
