@@ -18,7 +18,7 @@ class MEDSeg(nn.Module):
         if self.nin not in [1, 3]:
             self.in_conv = nn.Conv2d(in_channels=self.nin, out_channels=3, kernel_size=1, stride=1, padding=0, bias=False)
 
-        print(f"MEDSeg initialized. nin: {nin}, nout: {nout}, apply_sigmoid: {apply_sigmoid}, dropout: {dropout}, backbone: {backbone}, pretrained: {pretrained}, expand_bifpn: {expand_bifpn}")
+        print(f"MEDSeg initialized. nin: {nin}, nout: {nout}, apply_sigmoid: {apply_sigmoid}, dropout: {dropout}, backbone: {backbone}, pretrained: {pretrained}, expand_bifpn: {expand_bifpn}, align DISABLED")
 
     def forward(self, x):
         if self.nin == 1:
