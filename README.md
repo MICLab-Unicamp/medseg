@@ -1,18 +1,19 @@
 # Modified EfficientDet Segmentation (MEDSeg)
-Official repository for reproducing COVID segmentation prediction using our MEDSeg model.
+Official repository for reproducing lung, COVID-19 and airway automated segmentation using our MEDSeg model.
 
-The publication for this method, **Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models**, has been published at the 17th International Symposium on Medical Information Processing and Analysis (SIPAIM 2021), and won the "SIPAIM Society Award".
+The publication original publication for this method, **Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models**, has been published at the 17th International Symposium on Medical Information Processing and Analysis (SIPAIM 2021), and won the "SIPAIM Society Award".
 http://dx.doi.org/10.1117/12.2606118
 
 The presentation can be watched in YouTube:
 https://www.youtube.com/watch?v=PlhNUD0Y4hg
 
-NOTE: We have also tried training this model in ATM22 (https://atm22.grand-challenge.org/). Airway segmentation is included, with also an argument (--atm_mode) to only segment the airway, using less memory. A short paper about this will be published in the near future.
+We have also applied this model in the ATM22 Challenge (https://atm22.grand-challenge.org/). Airway segmentation is included, with a CLI argument (--atm_mode) to only segment the airway, using less memory. A short paper about this is published in arXiv **Open-source tool for Airway Segmentation in
+Computed Tomography using 2.5D Modified EfficientDet: Contribution to the ATM22 Challenge**: https://arxiv.org/pdf/2209.15094.pdf
 
 ## Citation
-* Carmo, Diedre, et al. "Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models." 17th International Symposium on Medical Information Processing and Analysis. Vol. 12088. SPIE, 2021.
+* **COVID-19 segmentation**: Carmo, Diedre, et al. "Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models." 17th International Symposium on Medical Information Processing and Analysis. Vol. 12088. SPIE, 2021.
 
-* @inproceedings{carmo2021multitasking,\
+    * @inproceedings{carmo2021multitasking,\
   title={Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models},\
   author={Carmo, Diedre and Campiotti, Israel and Fantini, Irene and Rodrigues, L{\'\i}via and Rittner, Let{\'\i}cia and Lotufo, Roberto},\
   booktitle={17th International Symposium on Medical Information Processing and Analysis},\
@@ -21,6 +22,16 @@ NOTE: We have also tried training this model in ATM22 (https://atm22.grand-chall
   year={2021},\
   organization={SPIE}\
 }
+
+* **Airway segmentation**: Carmo, Diedre, Leticia Rittner, and Roberto Lotufo. "Open-source tool for Airway Segmentation in Computed Tomography using 2.5 D Modified EfficientDet: Contribution to the ATM22 Challenge." arXiv preprint arXiv:2209.15094 (2022).
+
+    * @article{carmo2022open,
+  title={Open-source tool for Airway Segmentation in Computed Tomography using 2.5 D Modified EfficientDet: Contribution to the ATM22 Challenge},
+  author={Carmo, Diedre and Rittner, Leticia and Lotufo, Roberto},
+  journal={arXiv preprint arXiv:2209.15094},
+  year={2022}
+}
+
 
 ## Requirements
 
