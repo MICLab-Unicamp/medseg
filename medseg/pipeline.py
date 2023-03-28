@@ -58,6 +58,7 @@ def pipeline(model_path: str,
                                      best_25d=os.path.join(pkg_path, "sme2d_coedet_fiso.ckpt") if long else None,
                                      best_25d_raw=os.path.join(pkg_path, "sing_a100_up_awd_step_raw_medseg_pos.ckpt"),
                                      airway=os.path.join(pkg_path, "airway.ckpt"),
+                                     parse=os.path.join(pkg_path, "parse.ckpt"),
                                      batch_size=batch_size,
                                      cpu=cpu,
                                      n=None)  # uncertainty disabled for now
@@ -80,54 +81,11 @@ def pipeline(model_path: str,
             if atm_mode:
                 airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, atm_mode=atm_mode)
             else:
-                ensemble_consensus, left_right_label, lung, covid, _, _, _, left_lung_volume, right_lung_volume, airway = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, act=act)
+                ensemble_consensus, left_right_label, lung, covid, _, _, _, left_lung_volume, right_lung_volume, airway, parse = model(input_volume=data.unsqueeze(0).unsqueeze(0), spacing=spacing, tqdm_iter=info_q, minimum_return=False, act=act)
             info_q.put(("iterbar", 90))
         else:
-            ################### DEPRECATED ##############################
-            raise DeprecationWarning
-            slice_dataset = SliceDataset(run)
-            directions = slice_dataset.directions
-            dir_array = np.asarray(directions)
-            spacing = slice_dataset.spacing
-            origin = slice_dataset.origin
-            original_image = slice_dataset.read_image()
-
-            slice_dataloader = slice_dataset.get_dataloader(batch_size)
-            info_q.put(("iterbar", 20))
-            info_q.put(("write", "Predicting..."))
-            output = []
-            for s, batch in enumerate(slice_dataloader):
-                info_q.put(("iterbar", 20 + s*(60/len(slice_dataset))))
-                package = batch[0].squeeze().numpy().copy()
-                info_q.put(("slice", package))
-
-                if gpu_available:
-                    batch = batch.cuda()
-
-                with torch.no_grad():
-                    output.append(model(batch).detach().cpu())
-            info_q.put(("icon", ''))
-                
-            info_q.put(("write", "Post-processing..."))
-            cpu_output = torch.stack(output, dim=0)
-            N, B, C, H, W = cpu_output.shape
-            cpu_output = cpu_output.reshape(N*B, C, H, W).permute(1, 0, 2, 3).numpy()
+            raise DeprecationWarning("There is only new pipeline. Old pipeline has been deprecated in version")
         
-            original_shape = slice_dataset.original_shape
-            
-            output_shape = cpu_output[0].shape
-            print(f"Original shape: {original_shape}")
-            print(f"Network output shape: {output_shape}")
-            if original_shape != output_shape:
-                print("Need interpolation to original shape.")
-                zoom_factor = np.array(original_shape)/np.array(output_shape)
-                cpu_output = multi_channel_zoom(cpu_output, zoom_factor, order=3, threaded=False, tqdm_on=False)
-            info_q.put(("iterbar", 85))
-            
-            lung, covid = post_processing(cpu_output)
-            info_q.put(("iterbar", 90))
-            ################### DEPRECATED ##############################
-
         # Statistics
         if isinstance(run, list):
             ID = os.path.basename(os.path.dirname(run[0]))
@@ -140,6 +98,7 @@ def pipeline(model_path: str,
         if not atm_mode:
             voxvol = spacing[0]*spacing[1]*spacing[2]
             airway_volume = round(airway.sum()*voxvol/1e+6, 3)
+            parse_volume = round(parse.sum()*voxvol/1e+6, 3)
 
             try:
                 lung_ocupation = round((covid.sum()/lung.sum())*100, 2)
@@ -177,6 +136,7 @@ def pipeline(model_path: str,
             output_csv["Left Lung Volume (L)"].append(left_lung_volume)
             output_csv["Right Lung Volume (L)"].append(right_lung_volume)
             output_csv["Airway Volume (L)"].append(airway_volume)
+            output_csv["Vessel Volume (L)"].append(parse_volume)
             output_csv["Lung Findings Volume (L)"].append(f_v)
             output_csv["Left Lung Findings Volume (L)"].append(left_f_v)
             output_csv["Right Lung Findings Volume (L)"].append(right_f_v)
@@ -188,6 +148,7 @@ def pipeline(model_path: str,
         # Undo flips
         if len(dir_array) == 9:
             airway = np.flip(airway, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
+            parse = np.flip(parse, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
             if not atm_mode:
                 lung = np.flip(lung, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
                 covid = np.flip(covid, np.where(dir_array[[0,4,8]][::-1]<0)[0]).copy()
@@ -195,6 +156,7 @@ def pipeline(model_path: str,
         if not atm_mode:
             merged = lung + covid
             merged[airway==1] = 3
+            merged[parse==1] = 4
         
         # Create save paths
         # output_input_path = os.path.join(output_path, ID + "_input.nii.gz")
@@ -206,6 +168,7 @@ def pipeline(model_path: str,
             output_airway = os.path.join(output_path, ID + ".nii.gz")
         else:
             output_airway = os.path.join(output_path, ID + "_airway.nii.gz")
+        output_parse = os.path.join(output_path, ID + "_vessel.nii.gz")
 
         # Create images
         # Reverting spacing back for saving
@@ -232,6 +195,14 @@ def pipeline(model_path: str,
             lung_image.SetSpacing(spacing)
             writer.SetFileName(output_lung_path)
             writer.Execute(lung_image)
+
+            # Save parse image
+            parse_image = sitk.GetImageFromArray(parse)
+            parse_image.SetDirection(directions)
+            parse_image.SetOrigin(origin)
+            parse_image.SetSpacing(spacing)
+            writer.SetFileName(output_parse)
+            writer.Execute(parse_image)
 
             # Save lr lung image
             lr_lung_image = sitk.GetImageFromArray(left_right_label)

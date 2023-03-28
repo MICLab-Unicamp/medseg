@@ -28,5 +28,5 @@ setuptools.setup(
         'console_scripts': ["medseg = medseg.run:main", "medseg_cpu = medseg.run:main_cpu"]
     },
     include_package_data=True,
-    package_data={'medseg': ["best_coedet.ckpt", "icon.png", "poly_lung.ckpt", "sing_a100_up_awd_step_raw_medseg_pos.ckpt", "sme2d_coedet_fiso.ckpt", "airway.ckpt"]}
+    package_data={'medseg': ["best_coedet.ckpt", "icon.png", "poly_lung.ckpt", "sing_a100_up_awd_step_raw_medseg_pos.ckpt", "sme2d_coedet_fiso.ckpt", "airway.ckpt", "parse.ckpt"]}
 )

@@ -1,6 +1,7 @@
 '''
 Multitask architecture lightning module
 '''
+import torch
 import pytorch_lightning as pl
 import torchmetrics
 import random
@@ -26,29 +27,27 @@ class Seg2DModule(pl.LightningModule):
         self.scratch = getattr(self.hparams, "scratch", False)
         self.expand_bifpn = getattr(self.hparams, "expand_bifpn", "conv")
         self.backbone = getattr(self.hparams, "backbone", "effnet")
+        self.downstream_method = getattr(self.hparams, "downstream_method", None)
+        self.stem_replacement = getattr(self.hparams, "stem_replacement", False)
+        self.new_latent_space = getattr(self.hparams, "new_latent_space", False)
+        self.compound_coef = getattr(self.hparams, "compound_coef", 4)
+        self.imnet_norm = getattr(self.hparams, "imnet_norm", False)
 
+
+        if self.findings_only:
+            print("ASSUMING training only with unhealthy findings!")
+            
         if dropout == True:
             print("WARNING: Replacing old hparams true dropout by full dropout")
             dropout = "full"
         
         if unet:
-            self.model = UNet(self.hparams.nin, self.hparams.seg_nout, True, "2d", 64, dropout=dropout)
+            self.model = UNet(self.hparams.nin, self.hparams.seg_nout, True, "2d", 64)
         else:
-            self.model = MEDSeg(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, backbone=self.backbone, expand_bifpn=self.expand_bifpn, dropout=dropout, pretrained=not self.scratch)
+            self.model = MEDSeg(self.hparams.nin, self.hparams.seg_nout, apply_sigmoid=False, backbone=self.backbone, expand_bifpn=self.expand_bifpn, dropout=dropout, pretrained=not self.scratch, 
+                                stem_replacement=self.stem_replacement, new_latent_space=self.new_latent_space, compound_coef=self.compound_coef, imnet_norm=self.imnet_norm)
         
         self.pretrained_weights = self.hparams.pretrained_weights
-        if self.pretrained_weights is not None:
-            pretrained_module = Seg2DModule.load_from_checkpoint(self.pretrained_weights)
-            if unet:
-                print("Loading pre-trained encoder...")
-                self.model.enc = pretrained_module.model.enc
-            else:
-                print("Loading pre-trained backbone and bifpn...")
-                
-                # Segmentation head will be trained from scratch. Load bakcbone and bifpn
-                self.model.model.backbone_net = pretrained_module.model.model.backbone_net
-                self.model.model.bifpn = pretrained_module.model.model.bifpn
-            print("Done.")
 
         if self.pretraining:
             self.lossfn = nn.MSELoss()
@@ -75,7 +74,16 @@ class Seg2DModule(pl.LightningModule):
         plt.imshow(yd.detach().cpu().numpy()[b, 0, :, :], cmap="gray")
         plt.show()
 
-    def forward(self, x):
+    def save_pt_model(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def load_pt_model(self, path):
+        self.model.load_state_dict(torch.load(path))
+
+    def forward(self, x, stacking=None):
+        '''
+        Stacking for compatibiliy with poly2D trained weights
+        '''
         if self.pretraining:
             return self.model(x)
         elif self.findings_only:
@@ -121,14 +129,13 @@ class Seg2DModule(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x, y, meta = train_batch
-        if self.findings_only and y.shape[1] == 3:
+        if self.findings_only and y.shape[1] == 3:  # IMPORTANT: takes only findings from traidtional 3 target one hot target
             y = y[:, 2:3]  
         if self.hparams.debug:
             print("Train step debug")
             self.debug_target(x, y)
 
         y_hat = self.forward(x)
-
         loss = self.compute_loss(x, y, y_hat, meta, prestr='')
 
         return loss
@@ -165,3 +172,4 @@ class Seg2DModule(pl.LightningModule):
             print(f"Using CosineAnnealingLR with tmax {self.scheduling_factor}!")
             scheduler = CosineAnnealingLR(optimizer, T_max=self.scheduling_factor, verbose=True)
             return [optimizer], [scheduler]
+        

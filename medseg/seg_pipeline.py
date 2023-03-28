@@ -43,7 +43,8 @@ class SegmentationPipeline():
                  best_3d="/home/diedre/diedre_phd/phd/models/wd_step_poly_lung_softm-epoch=85-val_loss=0.03.ckpt",  # POLY LUNG SOFTM
                  best_25d="/home/diedre/diedre_phd/phd/models/wd_step_sme2d_coedet_fiso-epoch=72-val_loss=0.06-bg_dice=1.00-healthy_dice=0.92-unhealthy_dice=0.74.ckpt",  # SME2D COEDET FISO Full train wd step  better
                  best_25d_raw="/home/diedre/diedre_phd/phd/models/sing_a100_up_awd_step_raw_medseg_pos-epoch=99-val_loss=0.15-bg_dice=1.00-healthy_dice=0.84-unhealthy_dice=0.71.ckpt",  # Best raw axial 2.5D model, trained on positive 256 slices only
-                 airway="/home/diedre/diedre_phd/phd/models/atm_baseline-epoch=75-val_loss=0.10-bg_dice=0.00-healthy_dice=0.00-unhealthy_dice=0.90.ckpt",
+                 airway="/home/diedre/diedre_phd/phd/models/atm_baseline-epoch=75-val_loss=0.10-bg_dice=0.00-healthy_dice=0.00-unhealthy_dice=0.90.ckpt",  # Air way model used in ATM22 challenge
+                 parse="/home/diedre/diedre_phd/phd/models/parse_baseline-epoch=103-val_loss=0.26-bg_dice=0.00-healthy_dice=0.00-unhealthy_dice=0.74.ckpt",  # First attempt at training in parse data
                  batch_size=4,
                  n=10,
                  cpu=False):  
@@ -58,6 +59,7 @@ class SegmentationPipeline():
             self.model_25d = Seg2DModule.load_from_checkpoint(best_25d).eval()
         self.model_25d_raw = Seg2DModule.load_from_checkpoint(best_25d_raw).eval()
         self.airway_model = Seg2DModule.load_from_checkpoint(airway).eval()
+        self.parse_model = Seg2DModule.load_from_checkpoint(parse).eval()
         self.hparams = self.model_25d_raw.hparams
         self.hparams.experiment_name = '_'.join([self.model_3d.hparams.experiment_name,
                                                  '' if self.model_25d is None else self.model_25d.hparams.experiment_name,
@@ -71,7 +73,7 @@ class SegmentationPipeline():
 
         with torch.no_grad():
             # Airway segmentation
-            tqdm_iter.write("Airway segmentation with ATM model...")
+            tqdm_iter.write("Airway and parse segmentation with ATM and Parse 22 model...")
             tqdm_iter.progress(10)
             pre_shape = input_volume.shape[2:]
             if pre_shape[1] != 512 or pre_shape[2] != 512:
@@ -82,13 +84,18 @@ class SegmentationPipeline():
             else:
                 adjust_shape = None
                 adjusted_volume = input_volume
+            output_p = stack_predict(self.parse_model.to(self.device), adjusted_volume, self.batch_size, extended_2d=1, get_uncertainty=None, device=self.device, info_q=tqdm_iter).squeeze()
+            self.parse_model.cpu()
             output_a = stack_predict(self.airway_model.to(self.device), adjusted_volume, self.batch_size, extended_2d=1, get_uncertainty=None, device=self.device, info_q=tqdm_iter).squeeze()
             self.airway_model.cpu()
             if adjust_shape is not None:
                 a_shape = output_a.shape
                 tqdm_iter.write(f"Airway output {a_shape} being transformed back to {pre_shape}")
                 output_a = F.interpolate(torch.from_numpy(output_a).unsqueeze(0).unsqueeze(0).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
-
+                p_shape = output_p.shape
+                tqdm_iter.write(f"Parse output {p_shape} being transformed back to {pre_shape}")
+                output_p = F.interpolate(torch.from_numpy(output_p).unsqueeze(0).unsqueeze(0).to(self.device), pre_shape, mode="nearest").squeeze().cpu().numpy()
+            
             if not atm_mode:
                 # 3D Lung detection
                 tqdm_iter.write("3D Prediction...")
@@ -178,6 +185,11 @@ class SegmentationPipeline():
         print(f"Airway max activation {output_a.max()}")
         airway = get_connected_components((output_a > 0.5).astype(np.int32), return_largest=1)[0].astype(np.int16)  # same type as atm mask
         print(f"Final airway max activation {airway.max()}")
+
+        print(f"Parse max activation {output_p.max()}")
+        parse = get_connected_components((output_p > 0.5).astype(np.int32), return_largest=1)[0].astype(np.int16)
+        print(f"Final parse max activation {parse.max()}")
+        
         tqdm_iter.write("Post-processing...")
         tqdm_iter.progress(80)
         if not atm_mode:
@@ -246,7 +258,7 @@ class SegmentationPipeline():
         elif minimum_return:
             return ensemble_consensus
         else:
-            return ensemble_consensus, left_right_label, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume, airway 
+            return ensemble_consensus, left_right_label, lung, findings, atts, epistemic_uncertainties, mean_predictions, left_lung_volume, right_lung_volume, airway, parse
 
 
 def get_atts_work(encoder, pre_shape):

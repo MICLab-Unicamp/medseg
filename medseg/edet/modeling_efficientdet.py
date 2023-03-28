@@ -1,6 +1,8 @@
 # Author: Zylo117
 # Modified by Israel and Diedre
 
+from typing import List
+from collections import OrderedDict
 import torch
 from torch import nn
 
@@ -8,6 +10,7 @@ from .efficientnet.utils import MemoryEfficientSwish
 
 from .efficientdet.model import BiFPN, Regressor, Classifier, EfficientNet, SegmentationClasssificationHead
 from .efficientdet.utils import Anchors
+from ..convnext import convnext_tiny
 
 
 class EfficientDet(nn.Module):
@@ -95,11 +98,112 @@ class EfficientDet(nn.Module):
             print('Ignoring ' + str(e) + '"')
 
 
+class FeatureFusion(nn.Module):
+    '''
+    Feature fusion module that makes use of all BiFPN features for segmentation instead of only
+    upsampling the highest spatial resolution.
+
+    upsample_sum: upsamples and sums all features 
+    (ESC) exponential_stride_compression: increases kernel size and dilation and exponentially increases the stride to compress features, from B, C, x, y into a B, C, x/256, y/256 array that can be linearized easily with reshape. Minimum input size 256x256.
+    seg_exponential_stride_compression: use values derived from ESC to weight high resolution features
+    '''
+    SUPPORTED_STRATS = ["upsample_sum", "exponential_stride_compression", "seg_exponential_stride_compression", "nonlinear_esc"]
+    def __init__(self, in_c: int, out_c: int, key: str):
+        super().__init__()
+        print(f"SELECTING FEATURE ADAPTER: {key}")
+        self.key = key
+        if key == "upsample_sum":
+            self.feature_adapters =  nn.ModuleList([nn.UpsamplingBilinear2d(scale_factor=2),
+                                                    nn.UpsamplingBilinear2d(scale_factor=4),
+                                                    nn.UpsamplingBilinear2d(scale_factor=8),
+                                                    nn.UpsamplingBilinear2d(scale_factor=16),
+                                                    nn.UpsamplingBilinear2d(scale_factor=32)])
+        elif key == "exponential_stride_compression":
+            self.feature_adapters =  nn.ModuleList([nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=11, padding=5, stride=128, dilation=6, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=9, padding=4, stride=64, dilation=5, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=7, padding=3, stride=32, dilation=4, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=5, padding=2, stride=16, dilation=3, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=3, padding=1, stride=8, dilation=2, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False))])
+        elif key == "seg_exponential_stride_compression":
+            self.feature_adapters =  nn.ModuleList([nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=11, padding=5, stride=128, dilation=6, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=9, padding=4, stride=64, dilation=5, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=7, padding=3, stride=32, dilation=4, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=5, padding=2, stride=16, dilation=3, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False)),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=3, padding=1, stride=8, dilation=2, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False))])
+            self.upsampler = nn.UpsamplingBilinear2d(scale_factor=2)
+            self.pooling = nn.AdaptiveAvgPool2d(1)
+        elif key == "nonlinear_esc":  # Save this for future embbedding building for transformers 
+            # Reduced stride progression, trusting average pooling, makes network work with 128x128 inputs minimum
+            self.feature_adapters =  nn.ModuleList([nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=11, padding=5, stride=64, dilation=4, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False),
+                                                                  nn.LeakyReLU()),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=9, padding=4, stride=32, dilation=3, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False),
+                                                                  nn.LeakyReLU()),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=7, padding=3, stride=16, dilation=3, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False),
+                                                                  nn.LeakyReLU()),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=5, padding=2, stride=8, dilation=2, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False),
+                                                                  nn.LeakyReLU()),
+                                                    nn.Sequential(nn.Conv2d(in_channels=in_c, out_channels=in_c, kernel_size=3, padding=1, stride=4, dilation=2, bias=False, groups=in_c),
+                                                                  nn.Conv2d(in_channels=in_c, out_channels=out_c, kernel_size=1, padding=0, stride=1, bias=False),
+                                                                  nn.LeakyReLU())])
+            self.upsampler = nn.UpsamplingBilinear2d(scale_factor=2)
+            self.pooling = nn.AdaptiveAvgPool2d(1)
+        else:
+            raise ValueError(f"Unsupported feature adapter {key}. Use one of {FeatureFusion.SUPPORTED_STRATS}")
+        self.latent_space = None
+    
+    def get_latent_space(self):
+        # Save this for future transformer involvement
+        B, C, _, _ = self.latent_space.shape
+        return self.latent_space.reshape(B, C)
+
+    def forward(self, in_features: List[torch.Tensor]) -> torch.Tensor:
+        out_features = None
+        for feature_adapter, in_feature in zip(self.feature_adapters, in_features):
+            if out_features is None:
+                out_features = feature_adapter(in_feature)
+            else:
+                out_features += feature_adapter(in_feature)
+        
+        if self.key in ["nonlinear_esc", "seg_exponential_stride_compression"]:
+            self.latent_space = self.pooling(out_features)
+            return self.upsampler(in_features[0]) * self.latent_space  # latent space weights channel contributions
+        else:
+            return out_features
+
+
 class EfficientDetForSemanticSegmentation(nn.Module):
 
-    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None, backbone="effnet"):
+    def __init__(self, load_weights=True, num_classes=2, apply_sigmoid=False, compound_coef=4, repeat=3, expand_bifpn=False, dropout=None, backbone="effnet", 
+                 num_classes_atm=None,    # airway tree modelling
+                 num_classes_rec=None,    # reconstructing branch
+                 num_classes_vessel=None, # vessel branch for future parse data (hopefully)
+                 new_latent_space=False):
+        '''
+        load_weights: wether to load pre trained as backbone
+        num_classes: number of classes for primary downstream segmentation task 
+        apply_sigmoid: wether to apply sigmoid to output. DEPRECATED. do this outside depending on application.
+        compound_coef: which efficientnet variation to base the architecture of, only supports 4.
+        repeat: how many conv blocks on the segmentation head
+        expand_bifpn: how to expand the bifpn features. Upsample is best
+        dropout: add additional dropouts to segmentation heads, doesnt work well DEPRECATED.
+        backbone: efficientnet or convnext as backbone
+        num_classes_aux: number of classes for secondary segmentation task. If None will not initialize second output.
+        '''
         super().__init__()
-        assert backbone == "effnet", "Backbones other than effnet are not public yet."
         self.compound_coef = compound_coef
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6]
         self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536]
@@ -107,6 +211,7 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         self.expand_bifpn = expand_bifpn
         self.backbone = backbone
 
+        feature_fusion = False
         if self.expand_bifpn == True or self.expand_bifpn == "conv":
             print("Using transposed convolution for bifpn result expansion and upsample 2 for convnext features")
             self.expand_conv = nn.Sequential(nn.ConvTranspose2d(128, 128, 2, 2),
@@ -125,6 +230,9 @@ class EfficientDetForSemanticSegmentation(nn.Module):
             print("Bifpn expansion disabled")
             self.convnext_upsample_scale = 4
             pass
+        elif self.expand_bifpn in FeatureFusion.SUPPORTED_STRATS:
+            print(f"Enabling feature fusion through {self.expand_bifpn}")
+            feature_fusion = True
         else:
             raise ValueError(f"Expand bifpn {self.expand_bifpn} not supported!")
         
@@ -132,6 +240,7 @@ class EfficientDetForSemanticSegmentation(nn.Module):
             # the channels of P2/P3/P4.
             0: [16, 24, 40],
             4: [24, 32, 56],
+            6: [32, 40, 72],
             "convnext": [96, 192, 384]
         }
 
@@ -148,27 +257,91 @@ class EfficientDetForSemanticSegmentation(nn.Module):
                     attention=True if self.compound_coef < 6 else False)
               for i in range(repeat)])
 
+        # Main classifier
         self.classifier = SegmentationClasssificationHead(in_channels=bifpn_channels,
                                                           num_classes=self.num_classes,
-                                                          num_layers=repeat,  # should it be repeat - 1?
+                                                          num_layers=repeat,
                                                           apply_sigmoid=apply_sigmoid,
                                                           dropout=dropout
                                                           )
+
+        # Reconstruction branch
+        if num_classes_rec is not None:
+            self.rec_classifier = SegmentationClasssificationHead(in_channels=bifpn_channels,
+                                                                  num_classes=num_classes_rec, 
+                                                                  num_layers=repeat,
+                                                                  apply_sigmoid=apply_sigmoid,
+                                                                  dropout=dropout
+                                                                  )
+
+        # ATM branch
+        if num_classes_atm is not None:
+            self.atm_classifier = SegmentationClasssificationHead(in_channels=bifpn_channels,
+                                                                  num_classes=num_classes_atm, 
+                                                                  num_layers=repeat,
+                                                                  apply_sigmoid=apply_sigmoid,
+                                                                  dropout=dropout
+                                                                  )
+
+        # vessel branch
+        if num_classes_vessel is not None:
+            self.vessel_classifier = SegmentationClasssificationHead(in_channels=bifpn_channels,
+                                                                     num_classes=num_classes_vessel, 
+                                                                     num_layers=repeat,
+                                                                     apply_sigmoid=apply_sigmoid,
+                                                                     dropout=dropout
+                                                                     )
+
+        # Where bifpn upsampling happens
+        if feature_fusion:
+            self.feature_adapters = FeatureFusion(bifpn_channels, bifpn_channels, key=self.expand_bifpn)   
+        else:
+            self.feature_adapters = None
+
+        # Backbone derived latent space
+        self.new_latent_space = new_latent_space
+        if self.new_latent_space:
+            raise DeprecationWarning("Latent space generation will be deprecated")
+            self.backbone_latent_space_pooling = nn.AdaptiveAvgPool2d(2)
+            self.backbone_latent_space_projection = nn.Sequential(nn.Linear(640, 320),
+                                                                  nn.LeakyReLU(),
+                                                                  nn.Linear(320, 160))
+        self.latent_space = None
+
         if self.backbone == "effnet":
             self.backbone_net = EfficientNet(self.backbone_compound_coef[self.compound_coef], load_weights)
         elif self.backbone == "convnext":
-            raise NotImplementedError("Our implementation of convnext is not public yet.")
+            self.backbone_net = convnext_tiny(pretrained=load_weights)
 
     def freeze_bn(self):
         for m in self.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
 
-    def extract_backbone_features(self, inputs):
-        max_size = inputs.shape[-1]
+    def get_latent_space(self):
+        raise DeprecationWarning("Latent space generation will be deprecated")
+        if self.feature_adapters is None:
+            return None
+        else:
+            return self.feature_adapters.get_latent_space()
 
+    def extract_backbone_latent_space(self, last_conv_features):
+        raise DeprecationWarning("Latent space generation will be deprecated")
+        B = last_conv_features.shape[0]
+        
+        latent_space = self.backbone_latent_space_pooling(last_conv_features).reshape(B, -1)
+        self.backbone_latent_space = self.backbone_latent_space_projection(latent_space)
+    
+    def get_backbone_latent_space(self):
+        raise DeprecationWarning("Latent space generation will be deprecated")
+        return self.backbone_latent_space
+        
+    def extract_backbone_features(self, inputs):
         if self.backbone == "effnet":
-            p2, p3, p4, _ = self.backbone_net(inputs)
+            p2, p3, p4, p5 = self.backbone_net(inputs)
+            if self.new_latent_space:
+                raise DeprecationWarning("Latent space generation will be deprecated")
+                self.extract_backbone_latent_space(p5)
         elif self.backbone == "convnext":
             p2, p3, p4 = self.backbone_net.forward_seg_features(inputs, self.convnext_upsample_scale)
 
@@ -180,21 +353,42 @@ class EfficientDetForSemanticSegmentation(nn.Module):
         return features
 
     def forward(self, inputs):
-        self.input_shape = inputs.shape
         features = self.extract_backbone_features(inputs)
-        feat_map = self.extract_bifpn_features(features)[0]
+        feat_map = self.extract_bifpn_features(features)
+        
+        # Here is where BIFPN feature fusion happens (ISBI paper?)
+        if self.feature_adapters is not None:
+            feat_map = self.feature_adapters(feat_map)
+        else:
+            feat_map = feat_map[0]
 
-        if self.expand_bifpn:
-            feat_map = self.expand_conv(feat_map)
+            if self.expand_bifpn:
+                feat_map = self.expand_conv(feat_map)
 
-            # Features must be same size as input
-            diffX = inputs.shape[2] - feat_map.size()[2]
-            diffY = inputs.shape[3] - feat_map.size()[3]
-            feat_map = torch.nn.functional.pad(feat_map, (diffY // 2, diffY - diffY // 2, diffX // 2, diffX - diffX // 2))
+                # Features must be same size as input
+                # diffX = inputs.shape[2] - feat_map.size()[2]
+                # diffY = inputs.shape[3] - feat_map.size()[3]
+                # feat_map = torch.nn.functional.pad(feat_map, (diffY // 2, diffY - diffY // 2, diffX // 2, diffX - diffX // 2))
+                # Align disabled!
 
         classification = self.classifier(feat_map)
 
-        return classification
+        rdict = OrderedDict()
+        rdict["main"] = classification
+        return_dict = False
+        for branch in ["rec", "atm", "vessel"]:
+            branch_module = getattr(self, f"{branch}_classifier", None)
+            if branch_module is not None:
+                return_dict = True
+                rdict[branch] = branch_module(feat_map)
+        
+        # Dict return form in case auxiliary branches are involved
+        if return_dict:
+            # LATENT SPACE DEPRECATED 
+            # rdict["latent_space"] = self.get_backbone_latent_space()
+            return rdict
+        else:
+            return classification
 
     def init_backbone(self, path):
         state_dict = torch.load(path)

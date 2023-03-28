@@ -1,3 +1,8 @@
+v2.5
+* Added Parse vessel segmentation output
+* Deprecated some old code
+* Move large files to separate release
+
 v2.4
 
 * Better input/output flow, option to use less memory by not showing activations

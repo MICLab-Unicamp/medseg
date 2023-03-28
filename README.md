@@ -1,5 +1,5 @@
 # Modified EfficientDet Segmentation (MEDSeg)
-Official repository for reproducing lung, COVID-19 and airway automated segmentation using our MEDSeg model.
+Official repository for reproducing lung, COVID-19, airway and pulmonary artery automated segmentation using our MEDSeg model.
 
 The publication original publication for this method, **Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models**, has been published at the 17th International Symposium on Medical Information Processing and Analysis (SIPAIM 2021), and won the "SIPAIM Society Award".
 http://dx.doi.org/10.1117/12.2606118
@@ -10,8 +10,10 @@ https://www.youtube.com/watch?v=PlhNUD0Y4hg
 We have also applied this model in the ATM22 Challenge (https://atm22.grand-challenge.org/). Airway segmentation is included, with a CLI argument (--atm_mode) to only segment the airway, using less memory. A short paper about this is published in arXiv **Open-source tool for Airway Segmentation in
 Computed Tomography using 2.5D Modified EfficientDet: Contribution to the ATM22 Challenge**: https://arxiv.org/pdf/2209.15094.pdf
 
+We have also trained this model to the PARSE Challenge (https://parse2022.grand-challenge.org/), (Pulmonary Artery segmentation). Pulmonary artery labels will be included in the outputs. The model achieved around 0.7 Dice in testing. An paper detailing this application will be published in the future. 
+
 ## Citation
-* **COVID-19 segmentation**: Carmo, Diedre, et al. "Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models." 17th International Symposium on Medical Information Processing and Analysis. Vol. 12088. SPIE, 2021.
+* **COVID-19 segmentation and method in general**: Carmo, Diedre, et al. "Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models." 17th International Symposium on Medical Information Processing and Analysis. Vol. 12088. SPIE, 2021.
 
     * @inproceedings{carmo2021multitasking,\
   title={Multitasking segmentation of lung and COVID-19 findings in CT scans using modified EfficientDet, UNet and MobileNetV3 models},\
@@ -68,6 +70,8 @@ All additional required libraries and the tool itself will be installed with the
     
 If you use virtual environments, it is safer to install in a new virtual environment to avoid conflicts.
 
+Finally, due to the large size of network weights, you need to go into the Release in this repository, download the data.zip file and extract the .ckpt files inside the medseg folder. The .ckpt files should be in the same directory level as the run.py file.
+
 ## Running 
 
 To run, just call it in a terminal.
@@ -91,3 +95,7 @@ If you have any problems, make sure your pip is the same from your miniconda ins
 by checking if pip --version points to the miniconda directory.
 
 If you have any issues, feel free to create an issue on this repository.
+
+### Known Issue
+
+"Long prediction" mode is not working due to recent changes in the architecutre. However not using it should be enough for most cases, Long Prediction uses more models in the final ensemble. 
