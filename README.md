@@ -62,15 +62,20 @@ If you don't want to use a GPU, you can skip this part and trust the automatic i
 
 ## Installation
 
-All additional required libraries and the tool itself will be installed with the following steps:
+All additional required libraries and the tool itself will be installed with the following steps. First, clone the repository. Then, due to the large size of network weights, you need to go into the Release in this repository, download the [data.zip](https://github.com/MICLab-Unicamp/medseg/releases/download/v2.5/data.zip) file and extract the .ckpt files inside the medseg/medseg folder. The .ckpt files should be in the same directory level as the run.py file. Finally, go into the top level folder (with the setup.py file) and install the tool with "pip install . ". The following command lines should do all those steps:
 
     git clone https://github.com/MICLab-Unicamp/medseg
-    cd medseg
+    cd medseg/medseg
+    wget https://github.com/MICLab-Unicamp/medseg/releases/download/v2.5/data.zip
+    unzip data.zip
+    cd ..
     pip install .
     
-If you use virtual environments, it is safer to install in a new virtual environment to avoid conflicts.
+The above commands require git, unzip and wget which can be installed in Ubuntu with 
 
-Finally, due to the large size of network weights, you need to go into the Release in this repository, download the data.zip file and extract the .ckpt files inside the medseg folder. The .ckpt files should be in the same directory level as the run.py file.
+    sudo apt install git wget unzip
+
+If you don't have them on your system.
 
 ## Running 
 
