@@ -1,3 +1,6 @@
+v2.5.1
+* Fix monitoring bug when not having GPUs accessible
+
 v2.5
 * Added Parse vessel segmentation output
 * Deprecated some old code
