@@ -1,3 +1,5 @@
+# IMPORTANT NOTICE: We are developing a new updated version, soon to be available after publication. This repository is an old version referring to the papers listed below.
+
 # Modified EfficientDet Segmentation (MEDSeg)
 Official repository for reproducing lung, COVID-19, airway and pulmonary artery automated segmentation using our MEDSeg model.
 
