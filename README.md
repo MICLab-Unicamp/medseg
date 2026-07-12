@@ -1,6 +1,8 @@
 # IMPORTANT NOTICE: 
+
 # A new improved version is available here: [MEDPSeg](https://github.com/MICLab-Unicamp/medpseg). 
-# This repository is an old version referring to the papers listed below.
+
+# This repository is deprecated, please use MEDPSeg. This branch is an old version referring to the papers listed below.
 
 # Modified EfficientDet Segmentation (MEDSeg)
 Official repository for reproducing lung, COVID-19, airway and pulmonary artery automated segmentation using our MEDSeg model.
